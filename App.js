@@ -1,16 +1,16 @@
 // App.js
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet } from 'react-native';
-import LoginScreen from './screens/LoginScreen';
-import CompatibilityScreen from './screens/CompatibilityScreen';
 
 // AuthProvider 임포트
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { db } from './firebase';
+import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 
 // 화면 컴포넌트들 임포트
 import AuthScreen from './screens/AuthScreen';
@@ -20,6 +20,7 @@ import WritePostScreen from './screens/WritePostScreen';
 import PostDetailScreen from './screens/PostDetailScreen';
 import EditPostScreen from './screens/EditPostScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import CompatibilityScreen from './screens/CompatibilityScreen';
 
 function BoardScreen({ navigation }) {
   return <HomeScreen navigation={navigation} category="연애상담" />;
@@ -28,7 +29,6 @@ function BoardScreen({ navigation }) {
 function ChatScreen({ navigation }) {
   return <HomeScreen navigation={navigation} category="잡담" />;
 }
-
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -77,60 +77,87 @@ function MainTabs() {
 function RootNavigator() {
   const { user, isLoading } = useAuth();
 
+  useEffect(() => {
+    if (user) {
+      incrementVisitCount(user.uid);
+    }
+  }, [user]);
+
+  const incrementVisitCount = async (userId) => {
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      const userDocSnap = await getDoc(userDocRef);
+
+      if (userDocSnap.exists()) {
+        await updateDoc(userDocRef, {
+          visitCount: increment(1),
+          lastVisit: new Date(),
+        });
+      } else {
+        await setDoc(userDocRef, {
+          visitCount: 1,
+          lastVisit: new Date(),
+        });
+      }
+      console.log('방문 횟수 업데이트 완료');
+    } catch (error) {
+      console.error('방문 횟수 업데이트 실패:', error);
+    }
+  };
+
   console.log('User logged in:', user ? 'Yes' : 'No');
-  console.log('Loading:', isLoading);
+  console.log('Is loading:', isLoading);
 
   if (isLoading) {
     return (
-      <View style={styles.container}>
-        <Text>로딩중...</Text>
+      <View style={styles.loadingContainer}>
+        <Text>로딩 중...</Text>
       </View>
     );
   }
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator>
       {user ? (
         <>
-          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen
+            name="MainTabs"
+            component={MainTabs}
+            options={{ headerShown: false }}
+          />
           <Stack.Screen
             name="WritePost"
             component={WritePostScreen}
             options={{
               presentation: 'modal',
-              headerShown: false
+              headerShown: false,
             }}
           />
           <Stack.Screen
             name="PostDetail"
             component={PostDetailScreen}
-            options={{
-              headerShown: false
-            }}
+            options={{ headerShown: false }}
           />
           <Stack.Screen
             name="EditPost"
             component={EditPostScreen}
             options={{
               presentation: 'modal',
-              headerShown: false
+              headerShown: false,
             }}
           />
         </>
       ) : (
         <>
-          <Stack.Screen name="Auth" component={AuthScreen} />
           <Stack.Screen
-            name="Login"
-            component={LoginScreen}
+            name="Auth"
+            component={AuthScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen
             name="SignUp"
             component={SignUpScreen}
-            options={{
-              headerShown: false
-            }}
+            options={{ headerShown: false }}
           />
         </>
       )}
@@ -150,16 +177,9 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    marginTop: 16,
   },
 });

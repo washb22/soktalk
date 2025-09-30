@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { db, auth } from '../firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function CompatibilityScreen() {
   const [myName, setMyName] = useState('');
@@ -33,16 +35,13 @@ export default function CompatibilityScreen() {
   };
 
   const parseResult = (resultText) => {
-    // "궁합 72% - 헤드라인 이모지\n요약\n강점: ...\n주의: ...\n팁: ..." 파싱
     const lines = resultText.split('\n');
     
-    // 첫 줄에서 퍼센트와 헤드라인 추출
     const firstLine = lines[0] || '';
     const percentMatch = firstLine.match(/(\d+)%/);
     const percentage = percentMatch ? parseInt(percentMatch[1]) : 70;
     const headline = firstLine.replace(/궁합\s*\d+%\s*-?\s*/, '').trim();
     
-    // 나머지 라인 분류
     const summary = lines[1] || '';
     const strengths = lines.find(l => l.includes('강점:') || l.includes('좋은 점:') || l.includes('포인트:'))?.split(':')[1]?.trim() || '';
     const watchouts = lines.find(l => l.includes('주의:') || l.includes('유의점:') || l.includes('체크:'))?.split(':')[1]?.trim() || '';
@@ -59,6 +58,8 @@ export default function CompatibilityScreen() {
 
     setLoading(true);
     try {
+      console.log('API 호출 시작...');
+      
       const response = await fetch('https://soktalk.vercel.app/api/compatibility', {
         method: 'POST',
         headers: {
@@ -74,11 +75,34 @@ export default function CompatibilityScreen() {
         }),
       });
 
+      console.log('응답 상태:', response.status);
+
       const data = await response.json();
+      console.log('받은 데이터:', data);
       
       if (data.success && data.result) {
         const parsed = parseResult(data.result);
         setResult(parsed);
+
+        // Firebase에 저장
+        const user = auth.currentUser;
+        if (user) {
+          try {
+            await addDoc(collection(db, 'users', user.uid, 'compatibilityHistory'), {
+              myName,
+              myBirthDate: formatDate(myBirthDate),
+              myGender,
+              partnerName,
+              partnerBirthDate: formatDate(partnerBirthDate),
+              partnerGender,
+              result: parsed,
+              createdAt: serverTimestamp(),
+            });
+            console.log('궁합 결과 저장 완료');
+          } catch (saveError) {
+            console.error('저장 실패:', saveError);
+          }
+        }
       } else {
         throw new Error('유효하지 않은 응답');
       }
@@ -159,7 +183,6 @@ export default function CompatibilityScreen() {
         <Text style={styles.title}>오늘의 궁합</Text>
         <Text style={styles.subtitle}>1일 1회 무료 궁합보기</Text>
 
-        {/* 내 정보 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>내 정보</Text>
           
@@ -209,7 +232,6 @@ export default function CompatibilityScreen() {
           </View>
         </View>
 
-        {/* 상대 정보 */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>상대 정보</Text>
           
