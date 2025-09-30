@@ -249,7 +249,7 @@ export default function HomeScreen({ navigation, route, category }) {
       
       <TouchableOpacity 
         style={styles.fab}
-        onPress={() => nav.navigate('WritePost')}
+        onPress={() => nav.navigate('WritePost', { category })}
       >
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>

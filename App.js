@@ -6,17 +6,19 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet } from 'react-native';
+import LoginScreen from './screens/LoginScreen';
 
 // AuthProvider 임포트
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 // 화면 컴포넌트들 임포트
 import AuthScreen from './screens/AuthScreen';
+import SignUpScreen from './screens/SignUpScreen';
 import HomeScreen from './screens/HomeScreen';
 import WritePostScreen from './screens/WritePostScreen';
 import PostDetailScreen from './screens/PostDetailScreen';
 import EditPostScreen from './screens/EditPostScreen';
-import ProfileScreen from './screens/ProfileScreen'; // ← 새로 추가
+import ProfileScreen from './screens/ProfileScreen';
 
 function BoardScreen({ navigation }) {
   return <HomeScreen navigation={navigation} category="연애상담" />;
@@ -109,6 +111,9 @@ function RootNavigator() {
           <Stack.Screen
             name="PostDetail"
             component={PostDetailScreen}
+            options={{
+              headerShown: false
+            }}
           />
           <Stack.Screen
             name="EditPost"
@@ -120,7 +125,21 @@ function RootNavigator() {
           />
         </>
       ) : (
-        <Stack.Screen name="Auth" component={AuthScreen} />
+        <>
+          <Stack.Screen name="Auth" component={AuthScreen} />
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="SignUp"
+            component={SignUpScreen}
+            options={{
+              headerShown: false
+            }}
+          />
+        </>
       )}
     </Stack.Navigator>
   );

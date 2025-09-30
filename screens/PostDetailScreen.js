@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
@@ -205,121 +206,130 @@ export default function PostDetailScreen({ route, navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>게시글</Text>
-        {isMyPost && (
-          <View style={styles.headerButtons}>
-            <TouchableOpacity onPress={handleEditPost} style={styles.headerIconButton}>
-              <Ionicons name="create-outline" size={22} color="#333" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleDeletePost} style={styles.headerIconButton}>
-              <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
-            </TouchableOpacity>
-          </View>
-        )}
-        {!isMyPost && <View style={{ width: 24 }} />}
-      </View>
-
-      <ScrollView style={styles.content}>
-        <View style={styles.categoryBadge}>
-          <Text style={styles.categoryText}>{post.category}</Text>
-        </View>
-
-        <Text style={styles.title}>{post.title}</Text>
-
-        <View style={styles.authorInfo}>
-          <View style={styles.authorLeft}>
-            <Ionicons name="person-circle" size={24} color="#666" />
-            <Text style={styles.authorName}>{post.author}</Text>
-          </View>
-          <Text style={styles.timeText}>{post.createdAt}</Text>
-        </View>
-
-        <Text style={styles.contentText}>{post.content}</Text>
-
-        <View style={styles.statsContainer}>
-          <TouchableOpacity style={styles.likeButton} onPress={handleLike}>
-            <Ionicons
-              name={liked ? 'heart' : 'heart-outline'}
-              size={24}
-              color={liked ? '#FF6B6B' : '#999'}
-            />
-            <Text style={[styles.statText, liked && styles.likedText]}>
-              {likeCount}
-            </Text>
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity 
+            onPress={() => navigation.goBack()}
+            style={styles.headerBackButton}
+          >
+            <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
-          <View style={styles.stat}>
-            <Ionicons name="eye-outline" size={20} color="#999" />
-            <Text style={styles.statText}>{post.views}</Text>
-          </View>
-        </View>
-
-        <View style={styles.divider} />
-
-        <View style={styles.commentsSection}>
-          <Text style={styles.commentsTitle}>
-            댓글 {comments.length}개
-          </Text>
-
-          {comments.length === 0 ? (
-            <View style={styles.emptyComments}>
-              <Ionicons name="chatbubble-outline" size={40} color="#ccc" />
-              <Text style={styles.emptyCommentsText}>
-                첫 댓글을 작성해보세요
-              </Text>
+          <Text style={styles.headerTitle}>게시글</Text>
+          {isMyPost && (
+            <View style={styles.headerButtons}>
+              <TouchableOpacity onPress={handleEditPost} style={styles.headerIconButton}>
+                <Ionicons name="create-outline" size={22} color="#333" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleDeletePost} style={styles.headerIconButton}>
+                <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
+              </TouchableOpacity>
             </View>
-          ) : (
-            comments.map(comment => (
-              <View key={comment.id} style={styles.commentItem}>
-                <View style={styles.commentHeader}>
-                  <View style={styles.commentAuthor}>
-                    <Ionicons name="person-circle" size={20} color="#666" />
-                    <Text style={styles.commentAuthorName}>
-                      {comment.author}
-                    </Text>
-                  </View>
-                  <Text style={styles.commentTime}>{comment.createdAt}</Text>
-                </View>
-                <Text style={styles.commentContent}>{comment.content}</Text>
-              </View>
-            ))
           )}
+          {!isMyPost && <View style={{ width: 24 }} />}
         </View>
-      </ScrollView>
 
-      <View style={styles.commentInputContainer}>
-        <TextInput
-          style={styles.commentInput}
-          placeholder="댓글을 입력하세요"
-          placeholderTextColor="#999"
-          value={commentText}
-          onChangeText={setCommentText}
-          multiline
-        />
-        <TouchableOpacity
-          style={[
-            styles.commentSubmitButton,
-            (!commentText.trim() || isSubmitting) &&
-              styles.commentSubmitButtonDisabled,
-          ]}
-          onPress={handleSubmitComment}
-          disabled={!commentText.trim() || isSubmitting}
-        >
-          <Ionicons name="send" size={20} color="#fff" />
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+        <ScrollView style={styles.content}>
+          <View style={styles.categoryBadge}>
+            <Text style={styles.categoryText}>{post.category}</Text>
+          </View>
+
+          <Text style={styles.title}>{post.title}</Text>
+
+          <View style={styles.authorInfo}>
+            <View style={styles.authorLeft}>
+              <Ionicons name="person-circle" size={24} color="#666" />
+              <Text style={styles.authorName}>{post.author}</Text>
+            </View>
+            <Text style={styles.timeText}>{post.createdAt}</Text>
+          </View>
+
+          <Text style={styles.contentText}>{post.content}</Text>
+
+          <View style={styles.statsContainer}>
+            <TouchableOpacity style={styles.likeButton} onPress={handleLike}>
+              <Ionicons
+                name={liked ? 'heart' : 'heart-outline'}
+                size={24}
+                color={liked ? '#FF6B6B' : '#999'}
+              />
+              <Text style={[styles.statText, liked && styles.likedText]}>
+                {likeCount}
+              </Text>
+            </TouchableOpacity>
+            <View style={styles.stat}>
+              <Ionicons name="eye-outline" size={20} color="#999" />
+              <Text style={styles.statText}>{post.views}</Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.commentsSection}>
+            <Text style={styles.commentsTitle}>
+              댓글 {comments.length}개
+            </Text>
+
+            {comments.length === 0 ? (
+              <View style={styles.emptyComments}>
+                <Ionicons name="chatbubble-outline" size={40} color="#ccc" />
+                <Text style={styles.emptyCommentsText}>
+                  첫 댓글을 작성해보세요
+                </Text>
+              </View>
+            ) : (
+              comments.map(comment => (
+                <View key={comment.id} style={styles.commentItem}>
+                  <View style={styles.commentHeader}>
+                    <View style={styles.commentAuthor}>
+                      <Ionicons name="person-circle" size={20} color="#666" />
+                      <Text style={styles.commentAuthorName}>
+                        {comment.author}
+                      </Text>
+                    </View>
+                    <Text style={styles.commentTime}>{comment.createdAt}</Text>
+                  </View>
+                  <Text style={styles.commentContent}>{comment.content}</Text>
+                </View>
+              ))
+            )}
+          </View>
+        </ScrollView>
+
+        <View style={styles.commentInputContainer}>
+          <TextInput
+            style={styles.commentInput}
+            placeholder="댓글을 입력하세요"
+            placeholderTextColor="#999"
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+          />
+          <TouchableOpacity
+            style={[
+              styles.commentSubmitButton,
+              (!commentText.trim() || isSubmitting) &&
+                styles.commentSubmitButtonDisabled,
+            ]}
+            onPress={handleSubmitComment}
+            disabled={!commentText.trim() || isSubmitting}
+          >
+            <Ionicons name="send" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
   container: {
     flex: 1,
     backgroundColor: '#fff',
@@ -338,12 +348,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
   },
+  headerBackButton: {
+    padding: 8,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   headerButtons: {
     flexDirection: 'row',
     gap: 12,
   },
   headerIconButton: {
-    padding: 4,
+    padding: 8,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   content: {
     flex: 1,
