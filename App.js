@@ -13,25 +13,18 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 // 화면 컴포넌트들 임포트
 import AuthScreen from './screens/AuthScreen';
 import HomeScreen from './screens/HomeScreen';
+import WritePostScreen from './screens/WritePostScreen';
+import PostDetailScreen from './screens/PostDetailScreen';
+import EditPostScreen from './screens/EditPostScreen';
 
-// 나머지 화면들 (임시)
-function BoardScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>연애상담</Text>
-      <Text>게시판 화면</Text>
-    </View>
-  );
+function BoardScreen({ navigation }) {
+  return <HomeScreen navigation={navigation} category="연애상담" />;
 }
 
-function ChatScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>잡담</Text>
-      <Text>잡담 게시판</Text>
-    </View>
-  );
+function ChatScreen({ navigation }) {
+  return <HomeScreen navigation={navigation} category="잡담" />;
 }
+
 
 function CompatibilityScreen() {
   return (
@@ -44,9 +37,19 @@ function CompatibilityScreen() {
 
 function ProfileScreen() {
   const { user, logout } = useAuth();
+
   return (
     <View style={styles.container}>
+      <Ionicons name="person-circle" size={80} color="#FF6B6B" />
       <Text style={styles.title}>마이페이지</Text>
+
+      {user && (
+        <View style={styles.userInfo}>
+          <Text style={styles.infoText}>닉네임: {user.nickname || '익명'}</Text>
+          <Text style={styles.infoText}>이메일: {user.email || '-'}</Text>
+        </View>
+      )}
+
       <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
         <Text style={styles.logoutText}>로그아웃</Text>
       </TouchableOpacity>
@@ -100,9 +103,9 @@ function MainTabs() {
 
 function RootNavigator() {
   const { user, isLoading } = useAuth();
-  
-  console.log('User state:', user);
-  console.log('Loading state:', isLoading);
+
+  console.log('User logged in:', user ? 'Yes' : 'No');
+  console.log('Loading:', isLoading);
 
   if (isLoading) {
     return (
@@ -115,7 +118,30 @@ function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
-        <Stack.Screen name="Main" component={MainTabs} />
+        <>
+          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen
+            name="WritePost"
+            component={WritePostScreen}
+            options={{
+              presentation: 'modal',
+              headerShown: false
+            }}
+          />
+          <Stack.Screen
+            name="PostDetail"
+            component={PostDetailScreen}
+          />
+          {/* ← 여기에 추가 */}
+          <Stack.Screen
+            name="EditPost"
+            component={EditPostScreen}
+            options={{
+              presentation: 'modal',
+              headerShown: false
+            }}
+          />
+        </>
       ) : (
         <Stack.Screen name="Auth" component={AuthScreen} />
       )}
@@ -123,36 +149,52 @@ function RootNavigator() {
   );
 }
 
-export default function App() {
-  return (
-    <AuthProvider>
-      <NavigationContainer>
-        <StatusBar style="light" />
-        <RootNavigator />
-      </NavigationContainer>
-    </AuthProvider>
-  );
-}
+  export default function App() {
+    return (
+      <AuthProvider>
+        <NavigationContainer>
+          <StatusBar style="light" />
+          <RootNavigator />
+        </NavigationContainer>
+      </AuthProvider>
+    );
+  }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  logoutBtn: {
-    marginTop: 20,
-    padding: 10,
-    backgroundColor: '#FF6B6B',
-    borderRadius: 5,
-  },
-  logoutText: {
-    color: 'white',
-  },
-});
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: '#fff',
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      marginBottom: 20,
+      marginTop: 16,
+    },
+    userInfo: {
+      backgroundColor: '#f8f8f8',
+      padding: 20,
+      borderRadius: 10,
+      marginVertical: 20,
+      width: '80%',
+    },
+    infoText: {
+      fontSize: 16,
+      marginVertical: 5,
+      color: '#333',
+    },
+    logoutBtn: {
+      marginTop: 20,
+      padding: 15,
+      paddingHorizontal: 40,
+      backgroundColor: '#FF6B6B',
+      borderRadius: 10,
+    },
+    logoutText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: 'bold',
+    },
+  });
