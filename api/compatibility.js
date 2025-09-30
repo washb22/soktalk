@@ -1,7 +1,5 @@
 // api/compatibility.js
-const OpenAI = require('openai').default;
-
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // CORS 설정
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -17,22 +15,29 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { myName, myBirthDate, partnerName, partnerBirthDate } = req.body;
+    const { myName, myBirthDate, myGender, partnerName, partnerBirthDate, partnerGender } = req.body;
 
     if (!myName || !myBirthDate || !partnerName || !partnerBirthDate) {
       return res.status(400).json({ error: '필수 정보를 모두 입력해주세요.' });
     }
 
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OpenAI API key not found');
+    }
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: `당신은 연애사주 상담사입니다.
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: `당신은 연애사주 상담사입니다.
 두 사람의 생년월일을 바탕으로 궁합을 분석해주세요.
 
 🎯 핵심 규칙:
@@ -50,23 +55,29 @@ module.exports = async function handler(req, res) {
 - 90% 이상: 매우 드문 천생연분 (거의 사용하지 않음)
 
 답변 형식: "궁합 XX% - [메시지]"`
-        },
-        {
-          role: 'user',
-          content: `다음 두 사람의 궁합을 분석해주세요:
+          },
+          {
+            role: 'user',
+            content: `다음 두 사람의 궁합을 분석해주세요:
 
-${myName} (${myBirthDate}생)
-${partnerName} (${partnerBirthDate}생)
+${myName} (${myGender}, ${myBirthDate}생)
+${partnerName} (${partnerGender}, ${partnerBirthDate}생)
 
 이 두 사람의 생년월일을 바탕으로 개인화된 궁합을 분석해주세요.
 전문 용어 없이 누구나 이해할 수 있는 따뜻한 말로 해주세요.`
-        }
-      ],
-      max_tokens: 150,
-      temperature: 0.7,
+          }
+        ],
+        max_tokens: 150,
+        temperature: 0.7,
+      }),
     });
 
-    const result = completion.choices[0].message.content.trim();
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const result = data.choices[0].message.content.trim();
 
     res.status(200).json({
       success: true,
@@ -89,4 +100,4 @@ ${partnerName} (${partnerBirthDate}생)
       result: randomMessage,
     });
   }
-};
+}

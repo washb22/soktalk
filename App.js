@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet } from 'react-native';
 import LoginScreen from './screens/LoginScreen';
+import CompatibilityScreen from './screens/CompatibilityScreen';
 
 // AuthProvider 임포트
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -28,14 +29,6 @@ function ChatScreen({ navigation }) {
   return <HomeScreen navigation={navigation} category="잡담" />;
 }
 
-function CompatibilityScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>오늘의 궁합</Text>
-      <Text>1일 1회 궁합보기</Text>
-    </View>
-  );
-}
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
