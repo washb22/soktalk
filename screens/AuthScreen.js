@@ -13,43 +13,32 @@ import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function AuthScreen({ navigation }) {
-  // 구글 인증 설정 - response 변수 제거
-  const [request, , promptAsync] = Google.useIdTokenAuthRequest({
-    clientId: '336220678179-gemki8b9a1c6232tckdaqma565vn2ttf.apps.googleusercontent.com',
-    // Expo 프록시 사용 설정 추가
-    redirectUri: makeRedirectUri({ useProxy: true }),
+  // ⚠️ Expo 환경에서는 expoClientId 사용 (웹 클라이언트 ID)
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    expoClientId: '336220678179-gemki8b9a1c6232tckdaqma565vn2ttf.apps.googleusercontent.com',
   });
 
-  // 리디렉션 URI 확인용 로그
+  // response 처리
   useEffect(() => {
-    if (request) {
-      console.log('=== IMPORTANT: Copy this Redirect URI to Google Console ===');
-      console.log('Redirect URI:', request.redirectUri);
-      console.log('=========================================================');
+    if (response?.type === 'success') {
+      const { authentication } = response;
+      if (authentication?.idToken) {
+        handleGoogleSignIn(authentication.idToken);
+      } else {
+        Alert.alert('오류', '구글 로그인에 실패했습니다.');
+      }
     }
-  }, [request]);
+  }, [response]);
 
   const handleGoogleLogin = () => {
     console.log('구글 로그인 버튼 클릭');
-    console.log('Request 상태:', request ? 'Available' : 'Not available');
     
     if (request) {
-      promptAsync().then((response) => {
-        if (response?.type === 'success') {
-          const { id_token } = response.params;
-          handleGoogleSignIn(id_token);
-        } else if (response?.type === 'cancel') {
-          console.log('구글 로그인 취소');
-        }
-      }).catch((error) => {
-        console.error('구글 로그인 에러:', error);
-        Alert.alert('오류', '구글 로그인에 실패했습니다.');
-      });
+      promptAsync();
     } else {
       Alert.alert('알림', '구글 로그인을 준비 중입니다. 잠시 후 다시 시도해주세요.');
     }
