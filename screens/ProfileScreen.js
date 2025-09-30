@@ -119,7 +119,7 @@ export default function ProfileScreen({ navigation }) {
       orderBy('createdAt', 'desc')
     );
     const snapshot = await getDocs(q);
-    
+
     const commentsWithPosts = await Promise.all(
       snapshot.docs.map(async (commentDoc) => {
         const commentData = commentDoc.data();
@@ -139,7 +139,7 @@ export default function ProfileScreen({ navigation }) {
         }
       })
     );
-    
+
     setComments(commentsWithPosts);
   };
 
@@ -151,7 +151,6 @@ export default function ProfileScreen({ navigation }) {
     const snapshot = await getDocs(q);
     setCompatibilityHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
-
   const handleLogout = async () => {
     Alert.alert('로그아웃', '정말 로그아웃 하시겠습니까?', [
       { text: '취소', style: 'cancel' },
@@ -161,17 +160,20 @@ export default function ProfileScreen({ navigation }) {
         onPress: async () => {
           try {
             await logout();
-            navigation.replace('Auth');
+            // navigation.replace('Auth') 제거
+            // AuthContext의 logout이 실행되면 자동으로 Auth 화면으로 전환됨
+            console.log('로그아웃 성공');
           } catch (error) {
+            console.error('로그아웃 에러:', error);
             Alert.alert('오류', '로그아웃 중 오류가 발생했습니다.');
           }
         },
       },
     ]);
   };
-
+  
   const renderCompatibilityItem = ({ item }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.postCard}
       onPress={() => {
         Alert.alert(

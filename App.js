@@ -14,6 +14,7 @@ import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 
 // 화면 컴포넌트들 임포트
 import AuthScreen from './screens/AuthScreen';
+import LoginScreen from './screens/LoginScreen';
 import SignUpScreen from './screens/SignUpScreen';
 import HomeScreen from './screens/HomeScreen';
 import WritePostScreen from './screens/WritePostScreen';
@@ -56,13 +57,8 @@ function MainTabs() {
         },
         tabBarActiveTintColor: '#FF6B6B',
         tabBarInactiveTintColor: 'gray',
-        headerStyle: {
-          backgroundColor: '#FF6B6B',
-        },
-        headerTintColor: '#fff',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
+        tabBarLabelStyle: { fontSize: 12 },
+        headerShown: false,
       })}
     >
       <Tab.Screen name="인기글" component={HomeScreen} />
@@ -74,102 +70,106 @@ function MainTabs() {
   );
 }
 
+// 인증된 사용자용 스택
+function AuthenticatedStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen
+        name="MainTabs"
+        component={MainTabs}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WritePost"
+        component={WritePostScreen}
+        options={{
+          presentation: 'modal',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="PostDetail"
+        component={PostDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="EditPost"
+        component={EditPostScreen}
+        options={{
+          presentation: 'modal',
+          headerShown: false,
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
+
+// 인증되지 않은 사용자용 스택
+function AuthStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen
+        name="Auth"
+        component={AuthScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Login"
+        component={LoginScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SignUp"
+        component={SignUpScreen}
+        options={{ headerShown: false }}
+      />
+    </Stack.Navigator>
+  );
+}
+
 function RootNavigator() {
   const { user, isLoading } = useAuth();
 
   useEffect(() => {
     if (user) {
-      incrementVisitCount(user.uid);
+      // 사용자가 로그인했을 때 방문 횟수 업데이트
+      updateVisitCount(user.uid);
     }
   }, [user]);
 
-  const incrementVisitCount = async (userId) => {
+  const updateVisitCount = async (uid) => {
     try {
-      const userDocRef = doc(db, 'users', userId);
-      const userDocSnap = await getDoc(userDocRef);
-
-      if (userDocSnap.exists()) {
+      const userDocRef = doc(db, 'users', uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
         await updateDoc(userDocRef, {
           visitCount: increment(1),
           lastVisit: new Date(),
         });
-      } else {
-        await setDoc(userDocRef, {
-          visitCount: 1,
-          lastVisit: new Date(),
-        });
       }
-      console.log('방문 횟수 업데이트 완료');
     } catch (error) {
-      console.error('방문 횟수 업데이트 실패:', error);
+      console.log('방문 횟수 업데이트 실패:', error);
     }
   };
-
-  console.log('User logged in:', user ? 'Yes' : 'No');
-  console.log('Is loading:', isLoading);
 
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <Text>로딩 중...</Text>
+        <Text style={styles.loadingText}>로딩 중...</Text>
       </View>
     );
   }
 
-  return (
-    <Stack.Navigator>
-      {user ? (
-        <>
-          <Stack.Screen
-            name="MainTabs"
-            component={MainTabs}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="WritePost"
-            component={WritePostScreen}
-            options={{
-              presentation: 'modal',
-              headerShown: false,
-            }}
-          />
-          <Stack.Screen
-            name="PostDetail"
-            component={PostDetailScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="EditPost"
-            component={EditPostScreen}
-            options={{
-              presentation: 'modal',
-              headerShown: false,
-            }}
-          />
-        </>
-      ) : (
-        <>
-          <Stack.Screen
-            name="Auth"
-            component={AuthScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="SignUp"
-            component={SignUpScreen}
-            options={{ headerShown: false }}
-          />
-        </>
-      )}
-    </Stack.Navigator>
-  );
+  // user 상태에 따라 자동으로 화면 전환
+  return user ? <AuthenticatedStack /> : <AuthStack />;
 }
 
 export default function App() {
   return (
     <AuthProvider>
       <NavigationContainer>
-        <StatusBar style="light" />
+        <StatusBar style="auto" />
         <RootNavigator />
       </NavigationContainer>
     </AuthProvider>
@@ -181,5 +181,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
   },
 });
