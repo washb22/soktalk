@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "671138886263",
+    "project_id": "soktalk-3e359",
+    "storage_bucket": "soktalk-3e359.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:671138886263:android:d51a882069d712aa2fcc72",
+        "android_client_info": {
+          "package_name": "com.wkrgud.soktalk"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "671138886263-60gkdihchvvf7vd1rlmurh7ptvuaus07.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wkrgud.soktalk",
+            "certificate_hash": "11bb05e9c46ff1d41c9625749d843982e18de056"
+          }
+        },
+        {
+          "client_id": "671138886263-ibtsvptfbe2co6fup7skhuoumhfs2dba.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBbEP4h6hFsKbHz3ucp0j35RUPviiBDnUo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "671138886263-ibtsvptfbe2co6fup7skhuoumhfs2dba.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

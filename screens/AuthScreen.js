@@ -11,45 +11,35 @@ import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebase';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
-
-WebBrowser.maybeCompleteAuthSession();
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 export default function AuthScreen({ navigation }) {
-  // ⚠️ Expo 환경에서는 expoClientId 사용 (웹 클라이언트 ID)
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    expoClientId: '336220678179-gemki8b9a1c6232tckdaqma565vn2ttf.apps.googleusercontent.com',
-  });
-
-  // response 처리
   useEffect(() => {
-    if (response?.type === 'success') {
-      const { authentication } = response;
-      if (authentication?.idToken) {
-        handleGoogleSignIn(authentication.idToken);
-      } else {
-        Alert.alert('오류', '구글 로그인에 실패했습니다.');
-      }
-    }
-  }, [response]);
+    // Google Sign-In 설정
+    GoogleSignin.configure({
+      webClientId: '336220678179-gemki8b9a1c6232tckdaqma565vn2ttf.apps.googleusercontent.com',
+      offlineAccess: true,
+    });
+  }, []);
 
-  const handleGoogleLogin = () => {
-    console.log('구글 로그인 버튼 클릭');
-    
-    if (request) {
-      promptAsync();
-    } else {
-      Alert.alert('알림', '구글 로그인을 준비 중입니다. 잠시 후 다시 시도해주세요.');
-    }
-  };
-
-  const handleGoogleSignIn = async (idToken) => {
+  const handleGoogleLogin = async () => {
     try {
-      console.log('ID Token received, signing in...');
+      console.log('구글 로그인 시작');
       
-      const credential = GoogleAuthProvider.credential(idToken);
-      const result = await signInWithCredential(auth, credential);
+      // Google Play Services 확인
+      await GoogleSignin.hasPlayServices();
+      
+      // 구글 로그인 실행
+      const userInfo = await GoogleSignin.signIn();
+      
+      console.log('구글 로그인 성공:', userInfo);
+      
+      // ID 토큰 가져오기
+      const { idToken } = userInfo;
+      
+      // Firebase 인증
+      const googleCredential = GoogleAuthProvider.credential(idToken);
+      const result = await signInWithCredential(auth, googleCredential);
       const user = result.user;
       
       console.log('Firebase 로그인 성공:', user.email);
@@ -91,7 +81,16 @@ export default function AuthScreen({ navigation }) {
       }
     } catch (error) {
       console.error('구글 로그인 에러:', error);
-      Alert.alert('오류', '로그인 처리 중 문제가 발생했습니다.');
+      
+      if (error.code === 'SIGN_IN_CANCELLED') {
+        console.log('사용자가 로그인을 취소했습니다');
+      } else if (error.code === 'IN_PROGRESS') {
+        console.log('이미 로그인 진행 중입니다');
+      } else if (error.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
+        Alert.alert('오류', 'Google Play 서비스를 사용할 수 없습니다');
+      } else {
+        Alert.alert('오류', '구글 로그인에 실패했습니다');
+      }
     }
   };
 
