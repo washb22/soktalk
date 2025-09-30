@@ -32,6 +32,25 @@ export default function CompatibilityScreen() {
     return `${year}-${month}-${day}`;
   };
 
+  const parseResult = (resultText) => {
+    // "궁합 72% - 헤드라인 이모지\n요약\n강점: ...\n주의: ...\n팁: ..." 파싱
+    const lines = resultText.split('\n');
+    
+    // 첫 줄에서 퍼센트와 헤드라인 추출
+    const firstLine = lines[0] || '';
+    const percentMatch = firstLine.match(/(\d+)%/);
+    const percentage = percentMatch ? parseInt(percentMatch[1]) : 70;
+    const headline = firstLine.replace(/궁합\s*\d+%\s*-?\s*/, '').trim();
+    
+    // 나머지 라인 분류
+    const summary = lines[1] || '';
+    const strengths = lines.find(l => l.includes('강점:') || l.includes('좋은 점:') || l.includes('포인트:'))?.split(':')[1]?.trim() || '';
+    const watchouts = lines.find(l => l.includes('주의:') || l.includes('유의점:') || l.includes('체크:'))?.split(':')[1]?.trim() || '';
+    const tip = lines.find(l => l.includes('팁:') || l.includes('Tip:') || l.includes('바로 해보기:'))?.split(':')[1]?.trim() || '';
+    
+    return { percentage, headline, summary, strengths, watchouts, tip };
+  };
+
   const handleAnalyze = async () => {
     if (!myName || !myGender || !partnerName || !partnerGender) {
       Alert.alert('알림', '모든 정보를 입력해주세요.');
@@ -40,8 +59,6 @@ export default function CompatibilityScreen() {
 
     setLoading(true);
     try {
-      console.log('API 호출 시작...');
-      
       const response = await fetch('https://soktalk.vercel.app/api/compatibility', {
         method: 'POST',
         headers: {
@@ -57,37 +74,17 @@ export default function CompatibilityScreen() {
         }),
       });
 
-      console.log('응답 상태:', response.status);
-      
-      // 응답이 JSON인지 확인
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('서버 응답이 JSON 형식이 아닙니다.');
-      }
-
       const data = await response.json();
-      console.log('받은 데이터:', data);
       
-      if (data.success && data.loveStyle) {
-        const match = data.loveStyle.match(/궁합\s*(\d+)%\s*-\s*(.+)/);
-        if (match) {
-          setResult({
-            percentage: parseInt(match[1]),
-            message: match[2].trim(),
-          });
-        } else {
-          // 매칭 실패 시 전체 메시지 사용
-          setResult({
-            percentage: 70,
-            message: data.loveStyle,
-          });
-        }
+      if (data.success && data.result) {
+        const parsed = parseResult(data.result);
+        setResult(parsed);
       } else {
-        throw new Error('유효하지 않은 응답 데이터');
+        throw new Error('유효하지 않은 응답');
       }
     } catch (error) {
-      console.error('에러 상세:', error);
-      Alert.alert('오류', `궁합 분석 중 오류가 발생했습니다: ${error.message}`);
+      console.error('에러:', error);
+      Alert.alert('오류', '궁합 분석 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
@@ -111,7 +108,42 @@ export default function CompatibilityScreen() {
             <Text style={styles.percentageText}>{result.percentage}%</Text>
           </View>
 
-          <Text style={styles.resultMessage}>{result.message}</Text>
+          <Text style={styles.headline}>{result.headline}</Text>
+          
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>종합 분석</Text>
+            <Text style={styles.cardText}>{result.summary}</Text>
+          </View>
+
+          {result.strengths && (
+            <View style={[styles.card, styles.strengthCard]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="heart" size={20} color="#FF6B6B" />
+                <Text style={styles.cardTitle}>강점</Text>
+              </View>
+              <Text style={styles.cardText}>{result.strengths}</Text>
+            </View>
+          )}
+
+          {result.watchouts && (
+            <View style={[styles.card, styles.watchoutCard]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="alert-circle" size={20} color="#FFA500" />
+                <Text style={styles.cardTitle}>주의할 점</Text>
+              </View>
+              <Text style={styles.cardText}>{result.watchouts}</Text>
+            </View>
+          )}
+
+          {result.tip && (
+            <View style={[styles.card, styles.tipCard]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="bulb" size={20} color="#4CAF50" />
+                <Text style={styles.cardTitle}>오늘의 팁</Text>
+              </View>
+              <Text style={styles.cardText}>{result.tip}</Text>
+            </View>
+          )}
 
           <TouchableOpacity style={styles.resetButton} onPress={resetForm}>
             <Text style={styles.resetButtonText}>다시 분석하기</Text>
@@ -327,13 +359,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   resultContainer: {
-    padding: 30,
-    alignItems: 'center',
+    padding: 20,
   },
   resultTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 30,
+    marginBottom: 20,
+    textAlign: 'center',
     color: '#333',
   },
   percentageCircle: {
@@ -343,26 +375,66 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6B6B',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 30,
+    alignSelf: 'center',
+    marginBottom: 20,
   },
   percentageText: {
     fontSize: 48,
     fontWeight: 'bold',
     color: '#fff',
   },
-  resultMessage: {
-    fontSize: 18,
+  headline: {
+    fontSize: 22,
+    fontWeight: 'bold',
     textAlign: 'center',
-    lineHeight: 28,
-    marginBottom: 30,
-    paddingHorizontal: 20,
+    marginBottom: 20,
     color: '#333',
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    padding: 20,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  strengthCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF6B6B',
+  },
+  watchoutCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#FFA500',
+  },
+  tipCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#4CAF50',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginLeft: 8,
+  },
+  cardText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#555',
   },
   resetButton: {
     backgroundColor: '#ddd',
     borderRadius: 10,
     padding: 15,
-    paddingHorizontal: 40,
+    alignItems: 'center',
+    marginTop: 10,
   },
   resetButtonText: {
     fontSize: 16,
