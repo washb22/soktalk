@@ -5,7 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 
 // AuthProvider 임포트
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -16,6 +16,7 @@ import HomeScreen from './screens/HomeScreen';
 import WritePostScreen from './screens/WritePostScreen';
 import PostDetailScreen from './screens/PostDetailScreen';
 import EditPostScreen from './screens/EditPostScreen';
+import ProfileScreen from './screens/ProfileScreen'; // ← 새로 추가
 
 function BoardScreen({ navigation }) {
   return <HomeScreen navigation={navigation} category="연애상담" />;
@@ -25,34 +26,11 @@ function ChatScreen({ navigation }) {
   return <HomeScreen navigation={navigation} category="잡담" />;
 }
 
-
 function CompatibilityScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>오늘의 궁합</Text>
       <Text>1일 1회 궁합보기</Text>
-    </View>
-  );
-}
-
-function ProfileScreen() {
-  const { user, logout } = useAuth();
-
-  return (
-    <View style={styles.container}>
-      <Ionicons name="person-circle" size={80} color="#FF6B6B" />
-      <Text style={styles.title}>마이페이지</Text>
-
-      {user && (
-        <View style={styles.userInfo}>
-          <Text style={styles.infoText}>닉네임: {user.nickname || '익명'}</Text>
-          <Text style={styles.infoText}>이메일: {user.email || '-'}</Text>
-        </View>
-      )}
-
-      <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
-        <Text style={styles.logoutText}>로그아웃</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -132,7 +110,6 @@ function RootNavigator() {
             name="PostDetail"
             component={PostDetailScreen}
           />
-          {/* ← 여기에 추가 */}
           <Stack.Screen
             name="EditPost"
             component={EditPostScreen}
@@ -149,52 +126,28 @@ function RootNavigator() {
   );
 }
 
-  export default function App() {
-    return (
-      <AuthProvider>
-        <NavigationContainer>
-          <StatusBar style="light" />
-          <RootNavigator />
-        </NavigationContainer>
-      </AuthProvider>
-    );
-  }
+export default function App() {
+  return (
+    <AuthProvider>
+      <NavigationContainer>
+        <StatusBar style="light" />
+        <RootNavigator />
+      </NavigationContainer>
+    </AuthProvider>
+  );
+}
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: '#fff',
-    },
-    title: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      marginBottom: 20,
-      marginTop: 16,
-    },
-    userInfo: {
-      backgroundColor: '#f8f8f8',
-      padding: 20,
-      borderRadius: 10,
-      marginVertical: 20,
-      width: '80%',
-    },
-    infoText: {
-      fontSize: 16,
-      marginVertical: 5,
-      color: '#333',
-    },
-    logoutBtn: {
-      marginTop: 20,
-      padding: 15,
-      paddingHorizontal: 40,
-      backgroundColor: '#FF6B6B',
-      borderRadius: 10,
-    },
-    logoutText: {
-      color: 'white',
-      fontSize: 16,
-      fontWeight: 'bold',
-    },
-  });
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    marginTop: 16,
+  },
+});

@@ -14,7 +14,20 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
-import { doc, updateDoc, increment, collection, addDoc, getDocs, query, orderBy, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { 
+  doc, 
+  updateDoc, 
+  increment, 
+  collection, 
+  addDoc, 
+  getDocs, 
+  query, 
+  orderBy, 
+  serverTimestamp, 
+  deleteDoc,
+  setDoc,
+  getDoc 
+} from 'firebase/firestore';
 
 export default function PostDetailScreen({ route, navigation }) {
   const { post } = route.params;
@@ -30,6 +43,7 @@ export default function PostDetailScreen({ route, navigation }) {
   useEffect(() => {
     incrementViews();
     loadComments();
+    checkIfLiked();
   }, []);
 
   const incrementViews = async () => {
@@ -45,6 +59,21 @@ export default function PostDetailScreen({ route, navigation }) {
       });
     } catch (error) {
       console.log('조회수 증가 에러:', error);
+    }
+  };
+
+  const checkIfLiked = async () => {
+    if (!user?.uid) return;
+    
+    try {
+      const likeRef = doc(db, 'posts', post.id, 'likes', user.uid);
+      const likeSnap = await getDoc(likeRef);
+      
+      if (likeSnap.exists()) {
+        setLiked(true);
+      }
+    } catch (error) {
+      console.log('좋아요 확인 에러:', error);
     }
   };
 
@@ -78,22 +107,38 @@ export default function PostDetailScreen({ route, navigation }) {
   };
 
   const handleLike = async () => {
+    if (!user?.uid) {
+      Alert.alert('알림', '로그인이 필요합니다');
+      return;
+    }
+
     try {
       const postRef = doc(db, 'posts', post.id);
+      const likeRef = doc(db, 'posts', post.id, 'likes', user.uid);
+      
       if (liked) {
+        // 좋아요 취소
+        await deleteDoc(likeRef);
         await updateDoc(postRef, {
           likes: increment(-1),
         });
         setLikeCount(prev => prev - 1);
+        setLiked(false);
       } else {
+        // 좋아요 추가
+        await setDoc(likeRef, {
+          userId: user.uid,
+          createdAt: serverTimestamp(),
+        });
         await updateDoc(postRef, {
           likes: increment(1),
         });
         setLikeCount(prev => prev + 1);
+        setLiked(true);
       }
-      setLiked(!liked);
     } catch (error) {
       console.log('좋아요 에러:', error);
+      Alert.alert('오류', '좋아요 처리에 실패했습니다');
     }
   };
 
