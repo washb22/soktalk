@@ -17,7 +17,7 @@ export default function AuthScreen({ navigation }) {
   useEffect(() => {
     // Google Sign-In 설정
     GoogleSignin.configure({
-      webClientId: '336220678179-gemki8b9a1c6232tckdaqma565vn2ttf.apps.googleusercontent.com',
+      webClientId: '671138886263-ibtsvptfbe2co6fup7skhuoumhfs2dba.apps.googleusercontent.com',
       offlineAccess: true,
     });
   }, []);

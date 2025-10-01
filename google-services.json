@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "671138886263-60gkdihchvvf7vd1rlmurh7ptvuaus07.apps.googleusercontent.com",
+          "client_id": "671138886263-63qpunis1qlnog77osk5gf4e0u7nnn37.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.wkrgud.soktalk",
-            "certificate_hash": "11bb05e9c46ff1d41c9625749d843982e18de056"
+            "certificate_hash": "118b05e9c46ff1d41c9625749d843982e18de056"
           }
         },
         {
@@ -37,6 +37,13 @@
             {
               "client_id": "671138886263-ibtsvptfbe2co6fup7skhuoumhfs2dba.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "671138886263-k6og60d0tkhfhbnhrinpmnrivotbmcap.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.wkrgud.soktalk"
+              }
             }
           ]
         }
