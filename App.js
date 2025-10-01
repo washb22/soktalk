@@ -22,6 +22,8 @@ import PostDetailScreen from './screens/PostDetailScreen';
 import EditPostScreen from './screens/EditPostScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import CompatibilityScreen from './screens/CompatibilityScreen';
+import LikedPostsScreen from './screens/LikedPostsScreen';
+import CommentedPostsScreen from './screens/CommentedPostsScreen';
 
 function BoardScreen({ navigation }) {
   return <HomeScreen navigation={navigation} category="연애상담" />;
@@ -56,8 +58,19 @@ function MainTabs() {
           return <Ionicons name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: '#FF6B6B',
-        tabBarInactiveTintColor: 'gray',
-        tabBarLabelStyle: { fontSize: 12 },
+        tabBarInactiveTintColor: '#999',
+        tabBarStyle: {
+          backgroundColor: '#fff',
+          borderTopWidth: 1,
+          borderTopColor: '#eee',
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        },
         headerShown: false,
       })}
     >
@@ -70,108 +83,87 @@ function MainTabs() {
   );
 }
 
-// 인증된 사용자용 스택
-function AuthenticatedStack() {
+function MainStack() {
   return (
-    <Stack.Navigator>
-      <Stack.Screen
-        name="MainTabs"
-        component={MainTabs}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="WritePost"
-        component={WritePostScreen}
-        options={{
-          presentation: 'modal',
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="PostDetail"
-        component={PostDetailScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="EditPost"
-        component={EditPostScreen}
-        options={{
-          presentation: 'modal',
-          headerShown: false,
-        }}
-      />
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <Stack.Screen name="MainTabs" component={MainTabs} />
+      <Stack.Screen name="WritePost" component={WritePostScreen} />
+      <Stack.Screen name="PostDetail" component={PostDetailScreen} />
+      <Stack.Screen name="EditPost" component={EditPostScreen} />
+      <Stack.Screen name="LikedPosts" component={LikedPostsScreen} />
+      <Stack.Screen name="CommentedPosts" component={CommentedPostsScreen} />
     </Stack.Navigator>
   );
 }
 
-// 인증되지 않은 사용자용 스택
 function AuthStack() {
   return (
-    <Stack.Navigator>
-      <Stack.Screen
-        name="Auth"
-        component={AuthScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="Login"
-        component={LoginScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="SignUp"
-        component={SignUpScreen}
-        options={{ headerShown: false }}
-      />
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <Stack.Screen name="Auth" component={AuthScreen} />
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="SignUp" component={SignUpScreen} />
     </Stack.Navigator>
   );
 }
 
-function RootNavigator() {
-  const { user, isLoading } = useAuth();
+function AppNavigator() {
+  const { user, loading } = useAuth();
 
   useEffect(() => {
     if (user) {
-      // 사용자가 로그인했을 때 방문 횟수 업데이트
-      updateVisitCount(user.uid);
+      updateUserVisitCount(user.uid);
     }
   }, [user]);
 
-  const updateVisitCount = async (uid) => {
+  const updateUserVisitCount = async (userId) => {
     try {
-      const userDocRef = doc(db, 'users', uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (userDoc.exists()) {
+      const userDocRef = doc(db, 'users', userId);
+      const userDocSnap = await getDoc(userDocRef);
+
+      if (userDocSnap.exists()) {
         await updateDoc(userDocRef, {
           visitCount: increment(1),
           lastVisit: new Date(),
         });
+      } else {
+        await setDoc(userDocRef, {
+          visitCount: 1,
+          lastVisit: new Date(),
+        });
       }
     } catch (error) {
-      console.log('방문 횟수 업데이트 실패:', error);
+      console.error('방문 횟수 업데이트 에러:', error);
     }
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>로딩 중...</Text>
+        <Text>로딩 중...</Text>
       </View>
     );
   }
 
-  // user 상태에 따라 자동으로 화면 전환
-  return user ? <AuthenticatedStack /> : <AuthStack />;
+  return (
+    <NavigationContainer>
+      {user ? <MainStack /> : <AuthStack />}
+      <StatusBar style="auto" />
+    </NavigationContainer>
+  );
 }
 
 export default function App() {
   return (
     <AuthProvider>
-      <NavigationContainer>
-        <StatusBar style="auto" />
-        <RootNavigator />
-      </NavigationContainer>
+      <AppNavigator />
     </AuthProvider>
   );
 }
@@ -182,9 +174,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#666',
   },
 });

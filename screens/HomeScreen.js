@@ -162,6 +162,12 @@ export default function HomeScreen({ navigation, route, category }) {
     }
   };
 
+  const getHeaderTitle = () => {
+    if (category === '연애상담') return '연애상담';
+    if (category === '잡담') return '잡담';
+    return '인기글';
+  };
+
   const renderPost = ({ item }) => (
     <TouchableOpacity 
       style={styles.postCard}
@@ -202,6 +208,17 @@ export default function HomeScreen({ navigation, route, category }) {
 
   return (
     <View style={styles.container}>
+      {/* 헤더 추가 */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>{getHeaderTitle()}</Text>
+        <TouchableOpacity 
+          style={styles.writeButton}
+          onPress={() => nav.navigate('WritePost')}
+        >
+          <Ionicons name="create-outline" size={24} color="#FF6B6B" />
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={posts}
         renderItem={renderPost}
@@ -246,10 +263,10 @@ export default function HomeScreen({ navigation, route, category }) {
           )
         }
       />
-      
-      <TouchableOpacity 
+
+      <TouchableOpacity
         style={styles.fab}
-        onPress={() => nav.navigate('WritePost', { category })}
+        onPress={() => nav.navigate('WritePost')}
       >
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
@@ -262,29 +279,52 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FF6B6B',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FF5252',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  writeButton: {
+    padding: 8,
+  },
   listContainer: {
-    padding: 12,
+    padding: 16,
   },
   postCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   postHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    alignItems: 'center',
+    marginBottom: 12,
   },
   category: {
     fontSize: 12,
     color: '#FF6B6B',
     fontWeight: '600',
+    backgroundColor: '#FFE5E5',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   time: {
     fontSize: 12,
@@ -294,14 +334,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 6,
+    marginBottom: 8,
     lineHeight: 22,
   },
   postContent: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 12,
     lineHeight: 20,
+    marginBottom: 12,
   },
   postFooter: {
     flexDirection: 'row',
@@ -309,31 +349,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   author: {
-    fontSize: 12,
-    color: '#999',
+    fontSize: 13,
+    color: '#666',
   },
   stats: {
     flexDirection: 'row',
+    gap: 12,
   },
   stat: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 12,
+    gap: 4,
   },
   statText: {
     fontSize: 12,
     color: '#999',
-    marginLeft: 4,
   },
   emptyContainer: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 100,
+    paddingVertical: 60,
   },
   emptyText: {
     marginTop: 12,
-    fontSize: 16,
+    fontSize: 14,
     color: '#999',
   },
   pagination: {
@@ -344,40 +383,30 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   pageButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    padding: 8,
   },
   pageButtonDisabled: {
-    backgroundColor: '#f5f5f5',
+    opacity: 0.3,
   },
   pageText: {
-    fontSize: 16,
+    fontSize: 14,
+    color: '#666',
     fontWeight: '600',
-    color: '#333',
   },
   fab: {
     position: 'absolute',
-    right: 16,
-    bottom: 16,
+    right: 20,
+    bottom: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: '#FF6B6B',
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
+    elevation: 8,
   },
 });

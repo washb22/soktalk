@@ -10,71 +10,90 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  SafeAreaView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
-import { 
-  doc, 
-  updateDoc, 
-  increment, 
-  collection, 
-  addDoc, 
-  getDocs, 
-  query, 
-  orderBy, 
-  serverTimestamp, 
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  arrayUnion,
+  arrayRemove,
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy,
   deleteDoc,
   setDoc,
-  getDoc 
 } from 'firebase/firestore';
 
 export default function PostDetailScreen({ route, navigation }) {
   const { post } = route.params;
   const { user } = useAuth();
-  const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(post.likes || 0);
+  const [postData, setPostData] = useState(null);
+  const [comment, setComment] = useState('');
   const [comments, setComments] = useState([]);
-  const [commentText, setCommentText] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const isMyPost = user?.uid === post.authorId;
+  const [isLiked, setIsLiked] = useState(false);
+  const [isBookmarked, setIsBookmarked] = useState(false); // 북마크 상태 추가
 
   useEffect(() => {
-    incrementViews();
+    loadPost();
     loadComments();
-    checkIfLiked();
+    checkBookmarkStatus(); // 북마크 상태 확인
   }, []);
 
-  const incrementViews = async () => {
+  const loadPost = async () => {
     try {
-      if (/^\d+$/.test(post.id)) {
-        console.log('임시 데이터이므로 조회수 업데이트 스킵');
-        return;
-      }
-      
       const postRef = doc(db, 'posts', post.id);
-      await updateDoc(postRef, {
-        views: increment(1),
-      });
+      const postSnap = await getDoc(postRef);
+      
+      if (postSnap.exists()) {
+        const data = postSnap.data();
+        setPostData(data);
+        setIsLiked(data.likes?.includes(user.uid));
+      }
     } catch (error) {
-      console.log('조회수 증가 에러:', error);
+      console.error('게시글 로드 에러:', error);
     }
   };
 
-  const checkIfLiked = async () => {
-    if (!user?.uid) return;
-    
+  const checkBookmarkStatus = async () => {
     try {
-      const likeRef = doc(db, 'posts', post.id, 'likes', user.uid);
-      const likeSnap = await getDoc(likeRef);
+      const bookmarkRef = doc(db, 'bookmarks', `${user.uid}_${post.id}`);
+      const bookmarkSnap = await getDoc(bookmarkRef);
+      setIsBookmarked(bookmarkSnap.exists());
+    } catch (error) {
+      console.error('북마크 상태 확인 에러:', error);
+    }
+  };
+
+  const toggleBookmark = async () => {
+    try {
+      const bookmarkRef = doc(db, 'bookmarks', `${user.uid}_${post.id}`);
       
-      if (likeSnap.exists()) {
-        setLiked(true);
+      if (isBookmarked) {
+        // 북마크 해제
+        await deleteDoc(bookmarkRef);
+        setIsBookmarked(false);
+        Alert.alert('알림', '북마크가 해제되었습니다.');
+      } else {
+        // 북마크 추가
+        await setDoc(bookmarkRef, {
+          userId: user.uid,
+          postId: post.id,
+          postTitle: postData?.title || post.title,
+          postCategory: postData?.category || post.category,
+          createdAt: new Date(),
+        });
+        setIsBookmarked(true);
+        Alert.alert('알림', '북마크에 추가되었습니다.');
       }
     } catch (error) {
-      console.log('좋아요 확인 에러:', error);
+      console.error('북마크 토글 에러:', error);
+      Alert.alert('오류', '북마크 처리 중 오류가 발생했습니다.');
     }
   };
 
@@ -87,94 +106,96 @@ export default function PostDetailScreen({ route, navigation }) {
       const commentsData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate ? 
-          formatTimeAgo(doc.data().createdAt.toDate()) : '방금 전'
       }));
       
       setComments(commentsData);
     } catch (error) {
-      console.log('댓글 로딩 에러:', error);
+      console.error('댓글 로드 에러:', error);
     }
-  };
-
-  const formatTimeAgo = (date) => {
-    const now = new Date();
-    const diff = Math.floor((now - date) / 1000);
-    
-    if (diff < 60) return '방금 전';
-    if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
-    return `${Math.floor(diff / 86400)}일 전`;
   };
 
   const handleLike = async () => {
-    if (!user?.uid) {
-      Alert.alert('알림', '로그인이 필요합니다');
-      return;
-    }
-
     try {
       const postRef = doc(db, 'posts', post.id);
-      const likeRef = doc(db, 'posts', post.id, 'likes', user.uid);
       
-      if (liked) {
-        // 좋아요 취소
-        await deleteDoc(likeRef);
+      if (isLiked) {
         await updateDoc(postRef, {
-          likes: increment(-1),
+          likes: arrayRemove(user.uid),
         });
-        setLikeCount(prev => prev - 1);
-        setLiked(false);
+        setIsLiked(false);
       } else {
-        // 좋아요 추가
-        await setDoc(likeRef, {
-          userId: user.uid,
-          createdAt: serverTimestamp(),
-        });
         await updateDoc(postRef, {
-          likes: increment(1),
+          likes: arrayUnion(user.uid),
         });
-        setLikeCount(prev => prev + 1);
-        setLiked(true);
+        setIsLiked(true);
       }
+      
+      loadPost();
     } catch (error) {
-      console.log('좋아요 에러:', error);
-      Alert.alert('오류', '좋아요 처리에 실패했습니다');
+      console.error('좋아요 에러:', error);
     }
   };
 
-  const handleSubmitComment = async () => {
-    if (!commentText.trim()) {
-      Alert.alert('알림', '댓글 내용을 입력해주세요');
+  const handleAddComment = async () => {
+    if (!comment.trim()) {
+      Alert.alert('알림', '댓글 내용을 입력해주세요.');
       return;
     }
 
-    setIsSubmitting(true);
-
     try {
       const commentsRef = collection(db, 'posts', post.id, 'comments');
-      const newComment = {
-        content: commentText.trim(),
-        author: user?.nickname || '익명',
-        authorId: user?.uid || 'anonymous',
-        createdAt: serverTimestamp(),
-      };
-
-      await addDoc(commentsRef, newComment);
-      
-      const postRef = doc(db, 'posts', post.id);
-      await updateDoc(postRef, {
-        comments: increment(1),
+      await addDoc(commentsRef, {
+        content: comment,
+        authorId: user.uid,
+        author: user.displayName || '익명',
+        createdAt: new Date(),
       });
 
-      setCommentText('');
+      const postRef = doc(db, 'posts', post.id);
+      await updateDoc(postRef, {
+        commentsCount: (postData?.commentsCount || 0) + 1,
+      });
+
+      setComment('');
       loadComments();
+      loadPost();
+      Alert.alert('성공', '댓글이 작성되었습니다.');
     } catch (error) {
-      console.log('댓글 등록 에러:', error);
-      Alert.alert('오류', '댓글 등록에 실패했습니다');
-    } finally {
-      setIsSubmitting(false);
+      console.error('댓글 작성 에러:', error);
+      Alert.alert('오류', '댓글 작성 중 오류가 발생했습니다.');
     }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    Alert.alert(
+      '댓글 삭제',
+      '정말 삭제하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const commentRef = doc(db, 'posts', post.id, 'comments', commentId);
+              await deleteDoc(commentRef);
+
+              const postRef = doc(db, 'posts', post.id);
+              await updateDoc(postRef, {
+                commentsCount: Math.max((postData?.commentsCount || 1) - 1, 0),
+              });
+
+              loadComments();
+              loadPost();
+              Alert.alert('성공', '댓글이 삭제되었습니다.');
+            } catch (error) {
+              console.error('댓글 삭제 에러:', error);
+              Alert.alert('오류', '댓글 삭제 중 오류가 발생했습니다.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleDeletePost = () => {
@@ -188,12 +209,13 @@ export default function PostDetailScreen({ route, navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteDoc(doc(db, 'posts', post.id));
-              Alert.alert('완료', '게시글이 삭제되었습니다');
+              const postRef = doc(db, 'posts', post.id);
+              await deleteDoc(postRef);
+              Alert.alert('성공', '게시글이 삭제되었습니다.');
               navigation.goBack();
             } catch (error) {
-              console.log('삭제 에러:', error);
-              Alert.alert('오류', '삭제에 실패했습니다');
+              console.error('게시글 삭제 에러:', error);
+              Alert.alert('오류', '게시글 삭제 중 오류가 발생했습니다.');
             }
           },
         },
@@ -202,8 +224,30 @@ export default function PostDetailScreen({ route, navigation }) {
   };
 
   const handleEditPost = () => {
-    navigation.navigate('EditPost', { post });
+    navigation.navigate('EditPost', { post: { id: post.id, ...postData } });
   };
+
+  if (!postData) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.headerBackButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons name="arrow-back" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>게시글</Text>
+            <View style={{ width: 44 }} />
+          </View>
+          <View style={styles.content}>
+            <Text>로딩 중...</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -212,58 +256,74 @@ export default function PostDetailScreen({ route, navigation }) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()}
+          <TouchableOpacity
             style={styles.headerBackButton}
+            onPress={() => navigation.goBack()}
           >
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>게시글</Text>
-          {isMyPost && (
-            <View style={styles.headerButtons}>
-              <TouchableOpacity onPress={handleEditPost} style={styles.headerIconButton}>
-                <Ionicons name="create-outline" size={22} color="#333" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleDeletePost} style={styles.headerIconButton}>
-                <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
-              </TouchableOpacity>
-            </View>
-          )}
-          {!isMyPost && <View style={{ width: 24 }} />}
+          <View style={styles.headerButtons}>
+            {/* 북마크 버튼 추가 */}
+            <TouchableOpacity
+              style={styles.headerIconButton}
+              onPress={toggleBookmark}
+            >
+              <Ionicons 
+                name={isBookmarked ? "bookmark" : "bookmark-outline"} 
+                size={24} 
+                color={isBookmarked ? "#FF6B6B" : "#333"} 
+              />
+            </TouchableOpacity>
+            
+            {postData.authorId === user.uid && (
+              <>
+                <TouchableOpacity
+                  style={styles.headerIconButton}
+                  onPress={handleEditPost}
+                >
+                  <Ionicons name="create-outline" size={24} color="#333" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.headerIconButton}
+                  onPress={handleDeletePost}
+                >
+                  <Ionicons name="trash-outline" size={24} color="#FF6B6B" />
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
         </View>
 
         <ScrollView style={styles.content}>
           <View style={styles.categoryBadge}>
-            <Text style={styles.categoryText}>{post.category}</Text>
+            <Text style={styles.categoryText}>{postData.category}</Text>
           </View>
 
-          <Text style={styles.title}>{post.title}</Text>
+          <Text style={styles.title}>{postData.title}</Text>
 
           <View style={styles.authorInfo}>
             <View style={styles.authorLeft}>
-              <Ionicons name="person-circle" size={24} color="#666" />
-              <Text style={styles.authorName}>{post.author}</Text>
+              <Text style={styles.authorName}>{postData.author}</Text>
+              <Text style={styles.timeText}>
+                {postData.createdAt?.toDate?.().toLocaleDateString('ko-KR')}
+              </Text>
             </View>
-            <Text style={styles.timeText}>{post.createdAt}</Text>
           </View>
 
-          <Text style={styles.contentText}>{post.content}</Text>
+          <Text style={styles.contentText}>{postData.content}</Text>
 
           <View style={styles.statsContainer}>
             <TouchableOpacity style={styles.likeButton} onPress={handleLike}>
               <Ionicons
-                name={liked ? 'heart' : 'heart-outline'}
+                name={isLiked ? 'heart' : 'heart-outline'}
                 size={24}
-                color={liked ? '#FF6B6B' : '#999'}
+                color={isLiked ? '#FF6B6B' : '#999'}
               />
-              <Text style={[styles.statText, liked && styles.likedText]}>
-                {likeCount}
+              <Text style={[styles.likeText, isLiked && styles.likedText]}>
+                {postData.likes?.length || 0}
               </Text>
             </TouchableOpacity>
-            <View style={styles.stat}>
-              <Ionicons name="eye-outline" size={20} color="#999" />
-              <Text style={styles.statText}>{post.views}</Text>
-            </View>
           </View>
 
           <View style={styles.divider} />
@@ -273,50 +333,40 @@ export default function PostDetailScreen({ route, navigation }) {
               댓글 {comments.length}개
             </Text>
 
-            {comments.length === 0 ? (
-              <View style={styles.emptyComments}>
-                <Ionicons name="chatbubble-outline" size={40} color="#ccc" />
-                <Text style={styles.emptyCommentsText}>
-                  첫 댓글을 작성해보세요
-                </Text>
-              </View>
-            ) : (
-              comments.map(comment => (
-                <View key={comment.id} style={styles.commentItem}>
-                  <View style={styles.commentHeader}>
-                    <View style={styles.commentAuthor}>
-                      <Ionicons name="person-circle" size={20} color="#666" />
-                      <Text style={styles.commentAuthorName}>
-                        {comment.author}
-                      </Text>
-                    </View>
-                    <Text style={styles.commentTime}>{comment.createdAt}</Text>
+            {comments.map((comment) => (
+              <View key={comment.id} style={styles.commentItem}>
+                <View style={styles.commentHeader}>
+                  <Text style={styles.commentAuthor}>{comment.author}</Text>
+                  <View style={styles.commentRight}>
+                    <Text style={styles.commentTime}>
+                      {comment.createdAt?.toDate?.().toLocaleDateString('ko-KR')}
+                    </Text>
+                    {comment.authorId === user.uid && (
+                      <TouchableOpacity
+                        onPress={() => handleDeleteComment(comment.id)}
+                        style={styles.deleteCommentButton}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#999" />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                  <Text style={styles.commentContent}>{comment.content}</Text>
                 </View>
-              ))
-            )}
+                <Text style={styles.commentContent}>{comment.content}</Text>
+              </View>
+            ))}
           </View>
         </ScrollView>
 
         <View style={styles.commentInputContainer}>
           <TextInput
             style={styles.commentInput}
-            placeholder="댓글을 입력하세요"
+            placeholder="댓글을 입력하세요..."
             placeholderTextColor="#999"
-            value={commentText}
-            onChangeText={setCommentText}
+            value={comment}
+            onChangeText={setComment}
             multiline
           />
-          <TouchableOpacity
-            style={[
-              styles.commentSubmitButton,
-              (!commentText.trim() || isSubmitting) &&
-                styles.commentSubmitButtonDisabled,
-            ]}
-            onPress={handleSubmitComment}
-            disabled={!commentText.trim() || isSubmitting}
-          >
+          <TouchableOpacity style={styles.submitButton} onPress={handleAddComment}>
             <Ionicons name="send" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -325,6 +375,7 @@ export default function PostDetailScreen({ route, navigation }) {
   );
 }
 
+// 기존 스타일 유지
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -429,15 +480,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
   },
-  stat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statText: {
+  likeText: {
     fontSize: 14,
     color: '#999',
+    fontWeight: '600',
   },
   likedText: {
     color: '#FF6B6B',
@@ -457,19 +508,8 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 16,
   },
-  emptyComments: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyCommentsText: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 12,
-  },
   commentItem: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    marginBottom: 20,
   },
   commentHeader: {
     flexDirection: 'row',
@@ -478,18 +518,21 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   commentAuthor: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  commentRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  commentAuthorName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333',
+    gap: 8,
   },
   commentTime: {
     fontSize: 12,
     color: '#999',
+  },
+  deleteCommentButton: {
+    padding: 4,
   },
   commentContent: {
     fontSize: 14,
@@ -498,9 +541,8 @@ const styles = StyleSheet.create({
   },
   commentInputContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    alignItems: 'center',
+    padding: 12,
     borderTopWidth: 1,
     borderTopColor: '#eee',
     backgroundColor: '#fff',
@@ -508,22 +550,19 @@ const styles = StyleSheet.create({
   },
   commentInput: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#f5f5f5',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    maxHeight: 100,
     fontSize: 14,
+    maxHeight: 100,
   },
-  commentSubmitButton: {
+  submitButton: {
+    backgroundColor: '#FF6B6B',
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FF6B6B',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  commentSubmitButtonDisabled: {
-    backgroundColor: '#ccc',
   },
 });
