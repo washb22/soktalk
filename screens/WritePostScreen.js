@@ -52,24 +52,23 @@ export default function WritePostScreen({ route, navigation }) {
         isAnonymous,
         views: 0,
         likes: 0,
-        comments: 0,
+        likesArray: [], // 좋아요 배열 추가
+        commentsCount: 0,
         createdAt: serverTimestamp(),
       };
 
       await addDoc(collection(db, 'posts'), postData);
 
-      navigation.reset({
-        index: 0,
-        routes: [
-          {
-            name: 'Main',
-            params: {
-              screen: '인기글',
-              params: { refresh: Date.now() }
-            }
+      Alert.alert('완료', '게시글이 등록되었습니다.', [
+        {
+          text: '확인',
+          onPress: () => {
+            navigation.navigate('MainTabs', {
+              screen: '인기글'
+            });
           }
-        ],
-      });
+        }
+      ]);
     } catch (error) {
       console.error('게시글 등록 에러:', error);
       Alert.alert('오류', '게시글 등록에 실패했습니다');

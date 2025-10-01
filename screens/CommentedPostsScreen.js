@@ -112,11 +112,12 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   backButton: {
-    padding: 8,
+    padding: 12,
     minWidth: 44,
     minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 8,  // 추가
   },
   headerTitle: {
     fontSize: 18,

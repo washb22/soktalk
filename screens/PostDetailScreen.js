@@ -10,8 +10,8 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
@@ -37,12 +37,12 @@ export default function PostDetailScreen({ route, navigation }) {
   const [comment, setComment] = useState('');
   const [comments, setComments] = useState([]);
   const [isLiked, setIsLiked] = useState(false);
-  const [isBookmarked, setIsBookmarked] = useState(false); // 북마크 상태 추가
+  const [isBookmarked, setIsBookmarked] = useState(false);
 
   useEffect(() => {
     loadPost();
     loadComments();
-    checkBookmarkStatus(); // 북마크 상태 확인
+    checkBookmarkStatus();
   }, []);
 
   const loadPost = async () => {
@@ -53,7 +53,15 @@ export default function PostDetailScreen({ route, navigation }) {
       if (postSnap.exists()) {
         const data = postSnap.data();
         setPostData(data);
-        setIsLiked(data.likes?.includes(user.uid));
+        
+        // likes가 배열인 경우와 숫자인 경우 모두 처리
+        if (Array.isArray(data.likes)) {
+          setIsLiked(data.likes.includes(user.uid));
+        } else {
+          // likes가 숫자인 경우, 별도의 likes 배열 확인
+          const likesArray = data.likesArray || [];
+          setIsLiked(likesArray.includes(user.uid));
+        }
       }
     } catch (error) {
       console.error('게시글 로드 에러:', error);
@@ -75,12 +83,10 @@ export default function PostDetailScreen({ route, navigation }) {
       const bookmarkRef = doc(db, 'bookmarks', `${user.uid}_${post.id}`);
       
       if (isBookmarked) {
-        // 북마크 해제
         await deleteDoc(bookmarkRef);
         setIsBookmarked(false);
         Alert.alert('알림', '북마크가 해제되었습니다.');
       } else {
-        // 북마크 추가
         await setDoc(bookmarkRef, {
           userId: user.uid,
           postId: post.id,
@@ -117,15 +123,24 @@ export default function PostDetailScreen({ route, navigation }) {
   const handleLike = async () => {
     try {
       const postRef = doc(db, 'posts', post.id);
+      const postSnap = await getDoc(postRef);
+      const currentData = postSnap.data();
+      
+      // likesArray 사용 (사용자 ID 배열)
+      const likesArray = currentData.likesArray || [];
       
       if (isLiked) {
+        // 좋아요 취소
         await updateDoc(postRef, {
-          likes: arrayRemove(user.uid),
+          likesArray: arrayRemove(user.uid),
+          likes: Math.max((currentData.likes || 1) - 1, 0),
         });
         setIsLiked(false);
       } else {
+        // 좋아요 추가
         await updateDoc(postRef, {
-          likes: arrayUnion(user.uid),
+          likesArray: arrayUnion(user.uid),
+          likes: (currentData.likes || 0) + 1,
         });
         setIsLiked(true);
       }
@@ -133,6 +148,7 @@ export default function PostDetailScreen({ route, navigation }) {
       loadPost();
     } catch (error) {
       console.error('좋아요 에러:', error);
+      Alert.alert('오류', '좋아요 처리 중 오류가 발생했습니다.');
     }
   };
 
@@ -198,6 +214,10 @@ export default function PostDetailScreen({ route, navigation }) {
     );
   };
 
+  const handleEditPost = () => {
+    navigation.navigate('EditPost', { post: { id: post.id, ...postData } });
+  };
+
   const handleDeletePost = () => {
     Alert.alert(
       '게시글 삭제',
@@ -209,8 +229,7 @@ export default function PostDetailScreen({ route, navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const postRef = doc(db, 'posts', post.id);
-              await deleteDoc(postRef);
+              await deleteDoc(doc(db, 'posts', post.id));
               Alert.alert('성공', '게시글이 삭제되었습니다.');
               navigation.goBack();
             } catch (error) {
@@ -223,48 +242,30 @@ export default function PostDetailScreen({ route, navigation }) {
     );
   };
 
-  const handleEditPost = () => {
-    navigation.navigate('EditPost', { post: { id: post.id, ...postData } });
-  };
-
   if (!postData) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.container}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.headerBackButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Ionicons name="arrow-back" size={24} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>게시글</Text>
-            <View style={{ width: 44 }} />
-          </View>
-          <View style={styles.content}>
-            <Text>로딩 중...</Text>
-          </View>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <Text>로딩 중...</Text>
+      </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
-        style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.container}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <View style={styles.header}>
           <TouchableOpacity
-            style={styles.headerBackButton}
+            style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>게시글</Text>
-          <View style={styles.headerButtons}>
-            {/* 북마크 버튼 추가 */}
+          <View style={styles.headerRight}>
             <TouchableOpacity
               style={styles.headerIconButton}
               onPress={toggleBookmark}
@@ -321,7 +322,7 @@ export default function PostDetailScreen({ route, navigation }) {
                 color={isLiked ? '#FF6B6B' : '#999'}
               />
               <Text style={[styles.likeText, isLiked && styles.likedText]}>
-                {postData.likes?.length || 0}
+                {postData.likes || 0}
               </Text>
             </TouchableOpacity>
           </View>
@@ -343,8 +344,8 @@ export default function PostDetailScreen({ route, navigation }) {
                     </Text>
                     {comment.authorId === user.uid && (
                       <TouchableOpacity
-                        onPress={() => handleDeleteComment(comment.id)}
                         style={styles.deleteCommentButton}
+                        onPress={() => handleDeleteComment(comment.id)}
                       >
                         <Ionicons name="trash-outline" size={16} color="#999" />
                       </TouchableOpacity>
@@ -361,12 +362,14 @@ export default function PostDetailScreen({ route, navigation }) {
           <TextInput
             style={styles.commentInput}
             placeholder="댓글을 입력하세요..."
-            placeholderTextColor="#999"
             value={comment}
             onChangeText={setComment}
             multiline
           />
-          <TouchableOpacity style={styles.submitButton} onPress={handleAddComment}>
+          <TouchableOpacity
+            style={styles.submitButton}
+            onPress={handleAddComment}
+          >
             <Ionicons name="send" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -375,7 +378,6 @@ export default function PostDetailScreen({ route, navigation }) {
   );
 }
 
-// 기존 스타일 유지
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -383,56 +385,51 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+  },
+  backButton: {
+    padding: 8,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
   },
-  headerBackButton: {
-    padding: 8,
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerButtons: {
+  headerRight: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
   headerIconButton: {
     padding: 8,
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   content: {
     flex: 1,
   },
   categoryBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FFE8E8',
+    backgroundColor: '#FFE5E5',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
     margin: 16,
-    marginBottom: 8,
   },
   categoryText: {
-    color: '#FF6B6B',
     fontSize: 12,
     fontWeight: '600',
+    color: '#FF6B6B',
   },
   title: {
     fontSize: 22,
@@ -440,7 +437,6 @@ const styles = StyleSheet.create({
     color: '#333',
     paddingHorizontal: 16,
     marginBottom: 12,
-    lineHeight: 30,
   },
   authorInfo: {
     flexDirection: 'row',
@@ -456,7 +452,8 @@ const styles = StyleSheet.create({
   },
   authorName: {
     fontSize: 14,
-    color: '#666',
+    fontWeight: '600',
+    color: '#333',
   },
   timeText: {
     fontSize: 12,
@@ -464,16 +461,15 @@ const styles = StyleSheet.create({
   },
   contentText: {
     fontSize: 16,
+    lineHeight: 24,
     color: '#333',
-    lineHeight: 26,
     paddingHorizontal: 16,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   statsContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 16,
-    gap: 16,
     marginBottom: 16,
   },
   likeButton: {
@@ -540,6 +536,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   commentInputContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,

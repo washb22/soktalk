@@ -7,8 +7,8 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
@@ -27,7 +27,7 @@ export default function LikedPostsScreen({ navigation }) {
     try {
       const q = query(
         collection(db, 'posts'),
-        where('likes', 'array-contains', user.uid),
+        where('likesArray', 'array-contains', user.uid),
         orderBy('createdAt', 'desc')
       );
       const snapshot = await getDocs(q);
@@ -62,7 +62,7 @@ export default function LikedPostsScreen({ navigation }) {
         </View>
         <View style={styles.metaItem}>
           <Ionicons name="heart" size={16} color="#FF6B6B" />
-          <Text style={styles.metaText}>{item.likes?.length || 0}</Text>
+          <Text style={styles.metaText}>{item.likes || 0}</Text>
         </View>
         <View style={styles.metaItem}>
           <Ionicons name="chatbubble-outline" size={16} color="#999" />
@@ -120,17 +120,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
   backButton: {
-    padding: 8,
-    minWidth: 44,
-    minHeight: 44,
+    padding: 12,
+    minWidth: 48,
+    minHeight: 48,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 8,
   },
   headerTitle: {
     fontSize: 18,
