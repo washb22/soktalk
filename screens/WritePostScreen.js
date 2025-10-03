@@ -10,12 +10,15 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { uploadImage } from '../utils/imageUpload';
 
 export default function WritePostScreen({ route, navigation }) {
   const { user } = useAuth();
@@ -25,6 +28,32 @@ export default function WritePostScreen({ route, navigation }) {
   const [category, setCategory] = useState(initialCategory);
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imageUri, setImageUri] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const pickImage = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    
+    if (permissionResult.granted === false) {
+      Alert.alert('알림', '사진 라이브러리 접근 권한이 필요합니다.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+    });
+
+    if (!result.canceled) {
+      setImageUri(result.assets[0].uri);
+    }
+  };
+
+  const removeImage = () => {
+    setImageUri(null);
+  };
   
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -41,8 +70,16 @@ export default function WritePostScreen({ route, navigation }) {
     }
 
     setIsSubmitting(true);
+    setUploading(true);
 
     try {
+      let imageUrl = null;
+      
+      // 이미지가 있으면 업로드
+      if (imageUri) {
+        imageUrl = await uploadImage(imageUri, 'posts');
+      }
+
       const postData = {
         title: title.trim(),
         content: content.trim(),
@@ -52,8 +89,9 @@ export default function WritePostScreen({ route, navigation }) {
         isAnonymous,
         views: 0,
         likes: 0,
-        likesArray: [], // 좋아요 배열 추가
+        likesArray: [],
         commentsCount: 0,
+        imageUrl: imageUrl, // 이미지 URL 추가
         createdAt: serverTimestamp(),
       };
 
@@ -74,6 +112,7 @@ export default function WritePostScreen({ route, navigation }) {
       Alert.alert('오류', '게시글 등록에 실패했습니다');
     } finally {
       setIsSubmitting(false);
+      setUploading(false);
     }
   };
 
@@ -179,6 +218,28 @@ export default function WritePostScreen({ route, navigation }) {
               />
             </View>
           </TouchableOpacity>
+
+          {/* 이미지 선택 버튼 */}
+          <TouchableOpacity
+            style={styles.imagePickerButton}
+            onPress={pickImage}
+          >
+            <Ionicons name="image-outline" size={24} color="#FF6B6B" />
+            <Text style={styles.imagePickerText}>사진 추가</Text>
+          </TouchableOpacity>
+
+          {/* 선택된 이미지 미리보기 */}
+          {imageUri && (
+            <View style={styles.imagePreviewContainer}>
+              <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+              <TouchableOpacity
+                style={styles.removeImageButton}
+                onPress={removeImage}
+              >
+                <Ionicons name="close-circle" size={30} color="#FF6B6B" />
+              </TouchableOpacity>
+            </View>
+          )}
 
           <TextInput
             style={styles.titleInput}
@@ -326,6 +387,37 @@ const styles = StyleSheet.create({
   },
   toggleCircleActive: {
     alignSelf: 'flex-end',
+  },
+  imagePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    backgroundColor: '#FFE5E5',
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  imagePickerText: {
+    fontSize: 15,
+    color: '#FF6B6B',
+    fontWeight: '600',
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#fff',
+    borderRadius: 15,
   },
   titleInput: {
     fontSize: 18,

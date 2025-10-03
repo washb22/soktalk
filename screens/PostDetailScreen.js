@@ -10,6 +10,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -54,11 +55,9 @@ export default function PostDetailScreen({ route, navigation }) {
         const data = postSnap.data();
         setPostData(data);
         
-        // likes가 배열인 경우와 숫자인 경우 모두 처리
         if (Array.isArray(data.likes)) {
           setIsLiked(data.likes.includes(user.uid));
         } else {
-          // likes가 숫자인 경우, 별도의 likes 배열 확인
           const likesArray = data.likesArray || [];
           setIsLiked(likesArray.includes(user.uid));
         }
@@ -126,18 +125,15 @@ export default function PostDetailScreen({ route, navigation }) {
       const postSnap = await getDoc(postRef);
       const currentData = postSnap.data();
       
-      // likesArray 사용 (사용자 ID 배열)
       const likesArray = currentData.likesArray || [];
       
       if (isLiked) {
-        // 좋아요 취소
         await updateDoc(postRef, {
           likesArray: arrayRemove(user.uid),
           likes: Math.max((currentData.likes || 1) - 1, 0),
         });
         setIsLiked(false);
       } else {
-        // 좋아요 추가
         await updateDoc(postRef, {
           likesArray: arrayUnion(user.uid),
           likes: (currentData.likes || 0) + 1,
@@ -244,28 +240,41 @@ export default function PostDetailScreen({ route, navigation }) {
 
   if (!postData) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text>로딩 중...</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.headerBackButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons name="arrow-back" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>게시글</Text>
+            <View style={{ width: 44 }} />
+          </View>
+          <View style={styles.content}>
+            <Text>로딩 중...</Text>
+          </View>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
           <TouchableOpacity
-            style={styles.backButton}
+            style={styles.headerBackButton}
             onPress={() => navigation.goBack()}
           >
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>게시글</Text>
-          <View style={styles.headerRight}>
+          <View style={styles.headerButtons}>
             <TouchableOpacity
               style={styles.headerIconButton}
               onPress={toggleBookmark}
@@ -313,6 +322,15 @@ export default function PostDetailScreen({ route, navigation }) {
           </View>
 
           <Text style={styles.contentText}>{postData.content}</Text>
+
+          {/* 이미지 표시 */}
+          {postData.imageUrl && (
+            <Image 
+              source={{ uri: postData.imageUrl }} 
+              style={styles.postImage}
+              resizeMode="cover"
+            />
+          )}
 
           <View style={styles.statsContainer}>
             <TouchableOpacity style={styles.likeButton} onPress={handleLike}>
@@ -386,50 +404,56 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
-  },
-  backButton: {
-    padding: 8,
+    backgroundColor: '#fff',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
   },
-  headerRight: {
+  headerBackButton: {
+    padding: 12,
+    minWidth: 48,
+    minHeight: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  headerButtons: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
   },
   headerIconButton: {
-    padding: 8,
+    padding: 12,
+    minWidth: 48,
+    minHeight: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   content: {
     flex: 1,
   },
   categoryBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FFE5E5',
+    backgroundColor: '#FFE8E8',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
     margin: 16,
+    marginBottom: 8,
   },
   categoryText: {
+    color: '#FF6B6B',
     fontSize: 12,
     fontWeight: '600',
-    color: '#FF6B6B',
   },
   title: {
     fontSize: 22,
@@ -437,6 +461,7 @@ const styles = StyleSheet.create({
     color: '#333',
     paddingHorizontal: 16,
     marginBottom: 12,
+    lineHeight: 30,
   },
   authorInfo: {
     flexDirection: 'row',
@@ -452,8 +477,7 @@ const styles = StyleSheet.create({
   },
   authorName: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    color: '#666',
   },
   timeText: {
     fontSize: 12,
@@ -461,15 +485,22 @@ const styles = StyleSheet.create({
   },
   contentText: {
     fontSize: 16,
-    lineHeight: 24,
     color: '#333',
+    lineHeight: 26,
     paddingHorizontal: 16,
-    marginBottom: 20,
+    marginBottom: 16,
+  },
+  postImage: {
+    width: '100%',
+    height: 300,
+    borderRadius: 12,
+    marginBottom: 16,
   },
   statsContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 16,
+    gap: 16,
     marginBottom: 16,
   },
   likeButton: {

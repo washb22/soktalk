@@ -10,11 +10,14 @@ import {
     Alert,
     KeyboardAvoidingView,
     Platform,
+    Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { db } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
+import { uploadImage } from '../utils/imageUpload';
 
 export default function EditPostScreen({ route, navigation }) {
     const { post } = route.params;
@@ -22,6 +25,34 @@ export default function EditPostScreen({ route, navigation }) {
     const [content, setContent] = useState(post.content);
     const [category, setCategory] = useState(post.category);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [imageUri, setImageUri] = useState(post.imageUrl || null);
+    const [imageChanged, setImageChanged] = useState(false);
+
+    const pickImage = async () => {
+        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        
+        if (permissionResult.granted === false) {
+            Alert.alert('알림', '사진 라이브러리 접근 권한이 필요합니다.');
+            return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.5,
+        });
+
+        if (!result.canceled) {
+            setImageUri(result.assets[0].uri);
+            setImageChanged(true);
+        }
+    };
+
+    const removeImage = () => {
+        setImageUri(null);
+        setImageChanged(true);
+    };
 
     const handleUpdate = async () => {
         if (!title.trim()) {
@@ -40,11 +71,24 @@ export default function EditPostScreen({ route, navigation }) {
         setIsSubmitting(true);
 
         try {
+            let finalImageUrl = imageUri;
+
+            // 이미지가 변경되었고, 새로운 로컬 이미지인 경우 업로드
+            if (imageChanged && imageUri && !imageUri.startsWith('https://')) {
+                finalImageUrl = await uploadImage(imageUri, 'posts');
+            }
+
+            // 이미지가 삭제된 경우
+            if (imageChanged && !imageUri) {
+                finalImageUrl = null;
+            }
+
             const postRef = doc(db, 'posts', post.id);
             await updateDoc(postRef, {
                 title: title.trim(),
                 content: content.trim(),
                 category,
+                imageUrl: finalImageUrl,
             });
 
             Alert.alert('완료', '게시글이 수정되었습니다', [
@@ -140,6 +184,30 @@ export default function EditPostScreen({ route, navigation }) {
                             </Text>
                         </TouchableOpacity>
                     </View>
+
+                    {/* 이미지 선택 버튼 */}
+                    <TouchableOpacity
+                        style={styles.imagePickerButton}
+                        onPress={pickImage}
+                    >
+                        <Ionicons name="image-outline" size={24} color="#FF6B6B" />
+                        <Text style={styles.imagePickerText}>
+                            {imageUri ? '사진 변경' : '사진 추가'}
+                        </Text>
+                    </TouchableOpacity>
+
+                    {/* 선택된 이미지 미리보기 */}
+                    {imageUri && (
+                        <View style={styles.imagePreviewContainer}>
+                            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+                            <TouchableOpacity
+                                style={styles.removeImageButton}
+                                onPress={removeImage}
+                            >
+                                <Ionicons name="close-circle" size={30} color="#FF6B6B" />
+                            </TouchableOpacity>
+                        </View>
+                    )}
 
                     <TextInput
                         style={styles.titleInput}
@@ -248,6 +316,37 @@ const styles = StyleSheet.create({
     },
     categoryButtonTextActive: {
         color: '#fff',
+    },
+    imagePickerButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 12,
+        backgroundColor: '#FFE5E5',
+        borderRadius: 12,
+        marginBottom: 16,
+        gap: 8,
+    },
+    imagePickerText: {
+        fontSize: 15,
+        color: '#FF6B6B',
+        fontWeight: '600',
+    },
+    imagePreviewContainer: {
+        position: 'relative',
+        marginBottom: 16,
+    },
+    imagePreview: {
+        width: '100%',
+        height: 200,
+        borderRadius: 12,
+    },
+    removeImageButton: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        backgroundColor: '#fff',
+        borderRadius: 15,
     },
     titleInput: {
         fontSize: 18,
