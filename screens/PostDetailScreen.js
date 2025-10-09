@@ -30,9 +30,7 @@ import {
   deleteDoc,
   setDoc,
 } from 'firebase/firestore';
-// 🔔 알림 서비스 import
 import { sendCommentNotification, sendLikeNotification } from '../services/notificationService';
-// 🚨 신고 모달 import
 import ReportModal from '../components/ReportModal';
 
 export default function PostDetailScreen({ route, navigation }) {
@@ -45,7 +43,15 @@ export default function PostDetailScreen({ route, navigation }) {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [isAnonymousComment, setIsAnonymousComment] = useState(false);
   
-  // 🚨 신고 모달 상태
+  // 익명 번호 매핑
+  const [anonymousMap, setAnonymousMap] = useState({});
+  const [nextAnonymousNumber, setNextAnonymousNumber] = useState(1);
+  
+  // 답글 관련 상태
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  
+  // 신고 모달 상태
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [reportTarget, setReportTarget] = useState(null);
 
@@ -117,66 +123,99 @@ export default function PostDetailScreen({ route, navigation }) {
       const q = query(commentsRef, orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
       
-      const commentsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const tempAnonymousMap = {};
+      let tempNextNumber = 1;
+
+      const commentsData = snapshot.docs.map(doc => {
+        const data = doc.data();
+        
+        // 익명 판별
+        const isAnon = data.isAnonymous || (data.author && data.author.includes('익명'));
+        let displayAuthor = data.author || '익명';
+        
+        if (isAnon && data.authorId) {
+          if (!tempAnonymousMap[data.authorId]) {
+            tempAnonymousMap[data.authorId] = tempNextNumber;
+            tempNextNumber++;
+          }
+          displayAuthor = `익명${tempAnonymousMap[data.authorId]}`;
+        }
+
+        // 답글 처리
+        const processedReplies = (data.replies || []).map(reply => {
+          const isReplyAnon = reply.isAnonymous || (reply.author && reply.author.includes('익명'));
+          let replyDisplayAuthor = reply.author || '익명';
+          
+          if (isReplyAnon && reply.authorId) {
+            if (!tempAnonymousMap[reply.authorId]) {
+              tempAnonymousMap[reply.authorId] = tempNextNumber;
+              tempNextNumber++;
+            }
+            replyDisplayAuthor = `익명${tempAnonymousMap[reply.authorId]}`;
+          }
+
+          return {
+            ...reply,
+            displayAuthor: replyDisplayAuthor,
+          };
+        });
+
+        return {
+          id: doc.id,
+          ...data,
+          displayAuthor,
+          replies: processedReplies,
+          likesCount: data.likesArray?.length || 0,
+        };
+      });
       
-      setComments(commentsData);
+      setAnonymousMap(tempAnonymousMap);
+      setNextAnonymousNumber(tempNextNumber);
+
+      const sortedComments = commentsData.sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        if (a.likesCount !== b.likesCount) return b.likesCount - a.likesCount;
+        return b.createdAt?.seconds - a.createdAt?.seconds;
+      });
+      
+      setComments(sortedComments);
     } catch (error) {
       console.error('댓글 로드 에러:', error);
     }
   };
 
-  // 🔔 좋아요 + 알림
   const handleLike = async () => {
     try {
       const postRef = doc(db, 'posts', post.id);
       const postSnap = await getDoc(postRef);
       const currentData = postSnap.data();
-      
       const likesArray = currentData.likesArray || [];
       
       if (isLiked) {
-        // 좋아요 취소
         await updateDoc(postRef, {
           likesArray: arrayRemove(user.uid),
           likes: Math.max((currentData.likes || 1) - 1, 0),
         });
         setIsLiked(false);
       } else {
-        // 좋아요 추가
         await updateDoc(postRef, {
           likesArray: arrayUnion(user.uid),
           likes: (currentData.likes || 0) + 1,
         });
         setIsLiked(true);
 
-        // 🔔 게시글 작성자에게 알림 (본인 게시글 제외)
         if (postData.authorId && postData.authorId !== user.uid) {
-          const likerName = user.displayName || '사용자';
-          const postTitle = postData.title || '게시글';
-          
-          // 알림 전송
-          await sendLikeNotification(
-            postData.authorId,
-            likerName,
-            postTitle,
-            post.id
-          );
-          
-          console.log('✅ 좋아요 알림 전송 완료');
+          await sendLikeNotification(postData.authorId, user.displayName || '사용자', postData.title || '게시글', post.id);
         }
       }
       
       loadPost();
     } catch (error) {
       console.error('좋아요 에러:', error);
-      Alert.alert('오류', '좋아요 처리 중 오류가 발생했습니다.');
     }
   };
 
-  // 🔔 댓글 작성 + 알림
   const handleAddComment = async () => {
     if (!comment.trim()) {
       Alert.alert('알림', '댓글 내용을 입력해주세요.');
@@ -184,80 +223,213 @@ export default function PostDetailScreen({ route, navigation }) {
     }
 
     try {
-      // 1. 댓글 작성
-      const commentsRef = collection(db, 'posts', post.id, 'comments');
-      await addDoc(commentsRef, {
+      let authorName = user.displayName || '익명';
+      if (isAnonymousComment) {
+        if (!anonymousMap[user.uid]) {
+          const newNumber = nextAnonymousNumber;
+          setAnonymousMap(prev => ({ ...prev, [user.uid]: newNumber }));
+          setNextAnonymousNumber(prev => prev + 1);
+          authorName = `익명${newNumber}`;
+        } else {
+          authorName = `익명${anonymousMap[user.uid]}`;
+        }
+      }
+
+      await addDoc(collection(db, 'posts', post.id, 'comments'), {
         content: comment,
         authorId: user.uid,
-        author: isAnonymousComment ? '익명' : (user.displayName || '익명'),
+        author: authorName,
         isAnonymous: isAnonymousComment,
         createdAt: new Date(),
+        likesArray: [],
+        isPinned: false,
+        replies: [],
       });
 
-      // 2. 게시글 댓글 수 증가
-      const postRef = doc(db, 'posts', post.id);
-      await updateDoc(postRef, {
+      await updateDoc(doc(db, 'posts', post.id), {
         commentsCount: (postData?.commentsCount || 0) + 1,
       });
 
-      // 🔔 3. 게시글 작성자에게 알림 (본인 게시글 제외)
       if (postData.authorId && postData.authorId !== user.uid) {
-        const commenterName = isAnonymousComment ? '익명' : (user.displayName || '사용자');
-        const postTitle = postData.title || '게시글';
-        
-        // 알림 전송
-        await sendCommentNotification(
-          postData.authorId,
-          commenterName,
-          postTitle,
-          post.id
-        );
-        
-        console.log('✅ 댓글 알림 전송 완료');
+        await sendCommentNotification(postData.authorId, authorName, postData.title || '게시글', post.id);
       }
 
-      // 4. 초기화 및 새로고침
       setComment('');
       setIsAnonymousComment(false);
       loadComments();
       loadPost();
-      Alert.alert('성공', '댓글이 작성되었습니다.');
     } catch (error) {
       console.error('댓글 작성 에러:', error);
-      Alert.alert('오류', '댓글 작성 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleAddReply = async () => {
+    if (!replyText.trim()) {
+      Alert.alert('알림', '답글 내용을 입력해주세요.');
+      return;
+    }
+
+    try {
+      const commentRef = doc(db, 'posts', post.id, 'comments', replyingTo.commentId);
+      const commentSnap = await getDoc(commentRef);
+      const currentReplies = commentSnap.data().replies || [];
+
+      let authorName = user.displayName || '익명';
+      if (isAnonymousComment) {
+        if (!anonymousMap[user.uid]) {
+          const newNumber = nextAnonymousNumber;
+          setAnonymousMap(prev => ({ ...prev, [user.uid]: newNumber }));
+          setNextAnonymousNumber(prev => prev + 1);
+          authorName = `익명${newNumber}`;
+        } else {
+          authorName = `익명${anonymousMap[user.uid]}`;
+        }
+      }
+
+      const finalContent = replyingTo.mentionName 
+        ? `@${replyingTo.mentionName} ${replyText}`
+        : replyText;
+
+      const newReply = {
+        id: Date.now().toString(),
+        content: finalContent,
+        authorId: user.uid,
+        author: authorName,
+        isAnonymous: isAnonymousComment,
+        createdAt: new Date(),
+        likesArray: [],
+      };
+
+      await updateDoc(commentRef, {
+        replies: [...currentReplies, newReply],
+      });
+
+      await updateDoc(doc(db, 'posts', post.id), {
+        commentsCount: (postData?.commentsCount || 0) + 1,
+      });
+
+      setReplyText('');
+      setReplyingTo(null);
+      setIsAnonymousComment(false);
+      loadComments();
+      loadPost();
+    } catch (error) {
+      console.error('답글 작성 에러:', error);
+    }
+  };
+
+  const handleCommentLike = async (commentId, currentLikesArray) => {
+    try {
+      const commentRef = doc(db, 'posts', post.id, 'comments', commentId);
+      const likesArray = currentLikesArray || [];
+      const isLiked = likesArray.includes(user.uid);
+
+      if (isLiked) {
+        await updateDoc(commentRef, { likesArray: arrayRemove(user.uid) });
+      } else {
+        await updateDoc(commentRef, { likesArray: arrayUnion(user.uid) });
+      }
+
+      loadComments();
+    } catch (error) {
+      console.error('댓글 좋아요 에러:', error);
+    }
+  };
+
+  const handleReplyLike = async (commentId, replyId, currentLikesArray) => {
+    try {
+      const commentRef = doc(db, 'posts', post.id, 'comments', commentId);
+      const commentSnap = await getDoc(commentRef);
+      const currentReplies = commentSnap.data().replies || [];
+      
+      const updatedReplies = currentReplies.map(reply => {
+        if (reply.id === replyId) {
+          const likesArray = reply.likesArray || [];
+          const isLiked = likesArray.includes(user.uid);
+          
+          return {
+            ...reply,
+            likesArray: isLiked
+              ? likesArray.filter(uid => uid !== user.uid)
+              : [...likesArray, user.uid],
+          };
+        }
+        return reply;
+      });
+
+      await updateDoc(commentRef, { replies: updatedReplies });
+      loadComments();
+    } catch (error) {
+      console.error('답글 좋아요 에러:', error);
+    }
+  };
+
+  const handlePinComment = async (commentId, isPinned) => {
+    try {
+      await updateDoc(doc(db, 'posts', post.id, 'comments', commentId), {
+        isPinned: !isPinned,
+      });
+      loadComments();
+    } catch (error) {
+      console.error('댓글 고정 에러:', error);
     }
   };
 
   const handleDeleteComment = async (commentId) => {
-    Alert.alert(
-      '댓글 삭제',
-      '정말 삭제하시겠습니까?',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '삭제',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const commentRef = doc(db, 'posts', post.id, 'comments', commentId);
-              await deleteDoc(commentRef);
+    Alert.alert('댓글 삭제', '정말 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const commentRef = doc(db, 'posts', post.id, 'comments', commentId);
+            const commentSnap = await getDoc(commentRef);
+            const repliesCount = commentSnap.data().replies?.length || 0;
 
-              const postRef = doc(db, 'posts', post.id);
-              await updateDoc(postRef, {
-                commentsCount: Math.max((postData?.commentsCount || 1) - 1, 0),
-              });
+            await deleteDoc(commentRef);
+            await updateDoc(doc(db, 'posts', post.id), {
+              commentsCount: Math.max((postData?.commentsCount || 1) - 1 - repliesCount, 0),
+            });
 
-              loadComments();
-              loadPost();
-              Alert.alert('성공', '댓글이 삭제되었습니다.');
-            } catch (error) {
-              console.error('댓글 삭제 에러:', error);
-              Alert.alert('오류', '댓글 삭제 중 오류가 발생했습니다.');
-            }
-          },
+            loadComments();
+            loadPost();
+          } catch (error) {
+            console.error('댓글 삭제 에러:', error);
+          }
         },
-      ]
-    );
+      },
+    ]);
+  };
+
+  const handleDeleteReply = async (commentId, replyId) => {
+    Alert.alert('답글 삭제', '정말 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const commentRef = doc(db, 'posts', post.id, 'comments', commentId);
+            const commentSnap = await getDoc(commentRef);
+            const currentReplies = commentSnap.data().replies || [];
+            
+            await updateDoc(commentRef, {
+              replies: currentReplies.filter(r => r.id !== replyId),
+            });
+
+            await updateDoc(doc(db, 'posts', post.id), {
+              commentsCount: Math.max((postData?.commentsCount || 1) - 1, 0),
+            });
+
+            loadComments();
+            loadPost();
+          } catch (error) {
+            console.error('답글 삭제 에러:', error);
+          }
+        },
+      },
+    ]);
   };
 
   const handleEditPost = () => {
@@ -265,30 +437,23 @@ export default function PostDetailScreen({ route, navigation }) {
   };
 
   const handleDeletePost = () => {
-    Alert.alert(
-      '게시글 삭제',
-      '정말 삭제하시겠습니까?',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '삭제',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteDoc(doc(db, 'posts', post.id));
-              Alert.alert('성공', '게시글이 삭제되었습니다.');
-              navigation.goBack();
-            } catch (error) {
-              console.error('게시글 삭제 에러:', error);
-              Alert.alert('오류', '게시글 삭제 중 오류가 발생했습니다.');
-            }
-          },
+    Alert.alert('게시글 삭제', '정말 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, 'posts', post.id));
+            navigation.goBack();
+          } catch (error) {
+            console.error('게시글 삭제 에러:', error);
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  // 🚨 게시글 신고
   const handleReportPost = () => {
     setReportTarget({
       type: 'post',
@@ -299,7 +464,6 @@ export default function PostDetailScreen({ route, navigation }) {
     setReportModalVisible(true);
   };
 
-  // 🚨 댓글 신고
   const handleReportComment = (commentData) => {
     setReportTarget({
       type: 'comment',
@@ -315,10 +479,7 @@ export default function PostDetailScreen({ route, navigation }) {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
           <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.headerBackButton}
-              onPress={() => navigation.goBack()}
-            >
+            <TouchableOpacity style={styles.headerBackButton} onPress={() => navigation.goBack()}>
               <Ionicons name="arrow-back" size={24} color="#333" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>게시글</Text>
@@ -334,33 +495,20 @@ export default function PostDetailScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.headerBackButton}
-            onPress={() => navigation.goBack()}
-          >
+          <TouchableOpacity style={styles.headerBackButton} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>게시글</Text>
           <View style={styles.headerButtons}>
-            {/* 🚨 신고 버튼 (본인 게시글 아닐 때만) */}
             {postData.authorId !== user.uid && (
-              <TouchableOpacity
-                style={styles.headerIconButton}
-                onPress={handleReportPost}
-              >
+              <TouchableOpacity style={styles.headerIconButton} onPress={handleReportPost}>
                 <Ionicons name="alert-circle-outline" size={24} color="#333" />
               </TouchableOpacity>
             )}
             
-            <TouchableOpacity
-              style={styles.headerIconButton}
-              onPress={toggleBookmark}
-            >
+            <TouchableOpacity style={styles.headerIconButton} onPress={toggleBookmark}>
               <Ionicons 
                 name={isBookmarked ? "bookmark" : "bookmark-outline"} 
                 size={24} 
@@ -370,16 +518,10 @@ export default function PostDetailScreen({ route, navigation }) {
             
             {postData.authorId === user.uid && (
               <>
-                <TouchableOpacity
-                  style={styles.headerIconButton}
-                  onPress={handleEditPost}
-                >
+                <TouchableOpacity style={styles.headerIconButton} onPress={handleEditPost}>
                   <Ionicons name="create-outline" size={24} color="#333" />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.headerIconButton}
-                  onPress={handleDeletePost}
-                >
+                <TouchableOpacity style={styles.headerIconButton} onPress={handleDeletePost}>
                   <Ionicons name="trash-outline" size={24} color="#FF6B6B" />
                 </TouchableOpacity>
               </>
@@ -387,121 +529,253 @@ export default function PostDetailScreen({ route, navigation }) {
           </View>
         </View>
 
-        <ScrollView style={styles.content}>
-          <View style={styles.categoryBadge}>
-            <Text style={styles.categoryText}>{postData.category}</Text>
-          </View>
-
-          <Text style={styles.title}>{postData.title}</Text>
-
-          <View style={styles.authorInfo}>
-            <View style={styles.authorLeft}>
-              <Text style={styles.authorName}>{postData.author}</Text>
-              <Text style={styles.timeText}>
-                {postData.createdAt?.toDate?.().toLocaleDateString('ko-KR')}
-              </Text>
+        <KeyboardAvoidingView 
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
+          <ScrollView 
+            style={styles.content}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.categoryBadge}>
+              <Text style={styles.categoryText}>{postData.category}</Text>
             </View>
-          </View>
 
-          <Text style={styles.contentText}>{postData.content}</Text>
+            <Text style={styles.title}>{postData.title}</Text>
 
-          {postData.imageUrl && (
-            <Image 
-              source={{ uri: postData.imageUrl }} 
-              style={styles.postImage}
-              resizeMode="cover"
-            />
-          )}
-
-          <View style={styles.statsContainer}>
-            <TouchableOpacity style={styles.likeButton} onPress={handleLike}>
-              <Ionicons
-                name={isLiked ? 'heart' : 'heart-outline'}
-                size={24}
-                color={isLiked ? '#FF6B6B' : '#999'}
-              />
-              <Text style={[styles.likeText, isLiked && styles.likedText]}>
-                {postData.likes || 0}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.commentsSection}>
-            <Text style={styles.commentsTitle}>
-              댓글 {comments.length}개
-            </Text>
-
-            {comments.map((commentItem) => (
-              <View key={commentItem.id} style={styles.commentItem}>
-                <View style={styles.commentHeader}>
-                  <Text style={styles.commentAuthor}>{commentItem.author}</Text>
-                  <View style={styles.commentRight}>
-                    <Text style={styles.commentTime}>
-                      {commentItem.createdAt?.toDate?.().toLocaleDateString('ko-KR')}
-                    </Text>
-                    {/* 🚨 본인 댓글: 삭제, 남의 댓글: 신고 */}
-                    {commentItem.authorId === user.uid ? (
-                      <TouchableOpacity
-                        style={styles.deleteCommentButton}
-                        onPress={() => handleDeleteComment(commentItem.id)}
-                      >
-                        <Ionicons name="trash-outline" size={16} color="#999" />
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.deleteCommentButton}
-                        onPress={() => handleReportComment(commentItem)}
-                      >
-                        <Ionicons name="alert-circle-outline" size={16} color="#999" />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-                <Text style={styles.commentContent}>{commentItem.content}</Text>
-              </View>
-            ))}
-          </View>
-        </ScrollView>
-
-        <View style={styles.commentInputContainer}>
-          <View style={styles.commentInputWrapper}>
-            <View style={styles.anonymousToggleRow}>
-              <TouchableOpacity
-                style={styles.anonymousToggle}
-                onPress={() => setIsAnonymousComment(!isAnonymousComment)}
-              >
-                <Ionicons 
-                  name={isAnonymousComment ? "checkbox" : "square-outline"} 
-                  size={20} 
-                  color={isAnonymousComment ? "#FF6B6B" : "#999"} 
-                />
-                <Text style={[
-                  styles.anonymousText,
-                  isAnonymousComment && styles.anonymousTextActive
-                ]}>
-                  익명으로 작성
+            <View style={styles.authorInfo}>
+              <View style={styles.authorLeft}>
+                <Text style={styles.authorName}>{postData.author}</Text>
+                <Text style={styles.timeText}>
+                  {postData.createdAt?.toDate?.().toLocaleDateString('ko-KR')}
                 </Text>
+              </View>
+            </View>
+
+            <Text style={styles.contentText}>{postData.content}</Text>
+
+            {postData.imageUrl && (
+              <Image source={{ uri: postData.imageUrl }} style={styles.postImage} resizeMode="cover" />
+            )}
+
+            <View style={styles.statsContainer}>
+              <TouchableOpacity style={styles.likeButton} onPress={handleLike}>
+                <Ionicons
+                  name={isLiked ? 'heart' : 'heart-outline'}
+                  size={24}
+                  color={isLiked ? '#FF6B6B' : '#999'}
+                />
+                <Text style={[styles.likeText, isLiked && styles.likedText]}>{postData.likes || 0}</Text>
               </TouchableOpacity>
             </View>
-            <TextInput
-              style={styles.commentInput}
-              placeholder="댓글을 입력하세요..."
-              value={comment}
-              onChangeText={setComment}
-              multiline
-            />
-          </View>
-          <TouchableOpacity
-            style={styles.submitButton}
-            onPress={handleAddComment}
-          >
-            <Ionicons name="send" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
 
-        {/* 🚨 신고 모달 */}
+            <View style={styles.divider} />
+
+            <View style={styles.commentsSection}>
+              <Text style={styles.commentsTitle}>댓글 {comments.length}개</Text>
+
+              {comments.map((commentItem) => {
+                const isCommentLiked = commentItem.likesArray?.includes(user.uid);
+                const isPostAuthor = postData.authorId === user.uid;
+
+                return (
+                  <View key={commentItem.id} style={styles.commentContainer}>
+                    <View style={[styles.commentItem, commentItem.isPinned && styles.pinnedComment]}>
+                      {commentItem.isPinned && (
+                        <View style={styles.pinnedBadge}>
+                          <Ionicons name="pin" size={12} color="#FF6B6B" />
+                          <Text style={styles.pinnedText}>고정됨</Text>
+                        </View>
+                      )}
+
+                      <View style={styles.commentHeader}>
+                        <Text style={styles.commentAuthor}>{commentItem.displayAuthor}</Text>
+                        <View style={styles.commentRight}>
+                          <Text style={styles.commentTime}>
+                            {commentItem.createdAt?.toDate?.().toLocaleDateString('ko-KR')}
+                          </Text>
+
+                          {isPostAuthor && commentItem.authorId !== user.uid && (
+                            <TouchableOpacity
+                              style={styles.pinButton}
+                              onPress={() => handlePinComment(commentItem.id, commentItem.isPinned)}
+                            >
+                              <Ionicons
+                                name={commentItem.isPinned ? 'pin' : 'pin-outline'}
+                                size={16}
+                                color={commentItem.isPinned ? '#FF6B6B' : '#999'}
+                              />
+                            </TouchableOpacity>
+                          )}
+
+                          {commentItem.authorId === user.uid ? (
+                            <TouchableOpacity
+                              style={styles.deleteCommentButton}
+                              onPress={() => handleDeleteComment(commentItem.id)}
+                            >
+                              <Ionicons name="trash-outline" size={16} color="#999" />
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity
+                              style={styles.deleteCommentButton}
+                              onPress={() => handleReportComment(commentItem)}
+                            >
+                              <Ionicons name="alert-circle-outline" size={16} color="#999" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+
+                      <Text style={styles.commentContent}>{commentItem.content}</Text>
+
+                      <View style={styles.commentActions}>
+                        <TouchableOpacity
+                          style={styles.commentLikeButton}
+                          onPress={() => handleCommentLike(commentItem.id, commentItem.likesArray)}
+                        >
+                          <Ionicons
+                            name={isCommentLiked ? 'heart' : 'heart-outline'}
+                            size={16}
+                            color={isCommentLiked ? '#FF6B6B' : '#999'}
+                          />
+                          <Text style={[styles.commentLikeText, isCommentLiked && styles.commentLikedText]}>
+                            {commentItem.likesCount || 0}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.replyButton}
+                          onPress={() => setReplyingTo({ 
+                            commentId: commentItem.id, 
+                            authorName: commentItem.displayAuthor,
+                            mentionName: null,
+                            isReplyToReply: false
+                          })}
+                        >
+                          <Ionicons name="arrow-undo-outline" size={16} color="#999" />
+                          <Text style={styles.replyButtonText}>답글</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {commentItem.replies && commentItem.replies.length > 0 && (
+                      <View style={styles.repliesContainer}>
+                        {commentItem.replies.map((reply) => {
+                          const isReplyLiked = reply.likesArray?.includes(user.uid);
+                          
+                          return (
+                            <View key={reply.id} style={styles.replyItem}>
+                              <Ionicons name="arrow-forward" size={16} color="#999" style={styles.replyIcon} />
+                              <View style={styles.replyContent}>
+                                <View style={styles.replyHeader}>
+                                  <Text style={styles.replyAuthor}>{reply.displayAuthor}</Text>
+                                  <View style={styles.replyRight}>
+                                    <Text style={styles.replyTime}>
+                                      {reply.createdAt?.toDate?.().toLocaleDateString('ko-KR')}
+                                    </Text>
+                                    {reply.authorId === user.uid && (
+                                      <TouchableOpacity
+                                        style={styles.deleteReplyButton}
+                                        onPress={() => handleDeleteReply(commentItem.id, reply.id)}
+                                      >
+                                        <Ionicons name="trash-outline" size={14} color="#999" />
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+                                </View>
+                                <Text style={styles.replyText}>{reply.content}</Text>
+                                <View style={styles.replyActions}>
+                                  <TouchableOpacity
+                                    style={styles.replyLikeButton}
+                                    onPress={() => handleReplyLike(commentItem.id, reply.id, reply.likesArray)}
+                                  >
+                                    <Ionicons
+                                      name={isReplyLiked ? 'heart' : 'heart-outline'}
+                                      size={14}
+                                      color={isReplyLiked ? '#FF6B6B' : '#999'}
+                                    />
+                                    <Text style={[styles.replyLikeText, isReplyLiked && styles.replyLikedText]}>
+                                      {reply.likesArray?.length || 0}
+                                    </Text>
+                                  </TouchableOpacity>
+                                  
+                                  <TouchableOpacity
+                                    style={styles.replyToReplyButton}
+                                    onPress={() => setReplyingTo({
+                                      commentId: commentItem.id,
+                                      authorName: commentItem.displayAuthor,
+                                      mentionName: reply.displayAuthor,
+                                      isReplyToReply: true
+                                    })}
+                                  >
+                                    <Ionicons name="arrow-undo-outline" size={12} color="#999" />
+                                    <Text style={styles.replyToReplyText}>답글</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <View style={styles.commentInputContainer}>
+            {replyingTo && (
+              <View style={styles.replyingToBar}>
+                <Text style={styles.replyingToText}>
+                  {replyingTo.isReplyToReply 
+                    ? `@${replyingTo.mentionName}님에게 답글 작성 중`
+                    : `${replyingTo.authorName}님에게 답글 작성 중`
+                  }
+                </Text>
+                <TouchableOpacity onPress={() => setReplyingTo(null)}>
+                  <Ionicons name="close-circle" size={20} color="#999" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={styles.inputRow}>
+              <View style={styles.commentInputWrapper}>
+                <View style={styles.anonymousToggleRow}>
+                  <TouchableOpacity
+                    style={styles.anonymousToggle}
+                    onPress={() => setIsAnonymousComment(!isAnonymousComment)}
+                  >
+                    <Ionicons
+                      name={isAnonymousComment ? 'checkbox' : 'square-outline'}
+                      size={20}
+                      color={isAnonymousComment ? '#FF6B6B' : '#999'}
+                    />
+                    <Text style={[styles.anonymousText, isAnonymousComment && styles.anonymousTextActive]}>
+                      익명으로 작성
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.commentInput}
+                  placeholder={replyingTo ? '답글을 입력하세요...' : '댓글을 입력하세요...'}
+                  value={replyingTo ? replyText : comment}
+                  onChangeText={replyingTo ? setReplyText : setComment}
+                  multiline
+                />
+              </View>
+              <TouchableOpacity
+                style={styles.submitButton}
+                onPress={replyingTo ? handleAddReply : handleAddComment}
+              >
+                <Ionicons name="send" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+
         <ReportModal
           visible={reportModalVisible}
           onClose={() => {
@@ -513,19 +787,14 @@ export default function PostDetailScreen({ route, navigation }) {
           targetAuthorId={reportTarget?.authorId}
           targetContent={reportTarget?.content}
         />
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-  },
+  safeArea: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -536,211 +805,71 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
     backgroundColor: '#fff',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  headerBackButton: {
-    padding: 12,
-    minWidth: 48,
-    minHeight: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  headerButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  headerIconButton: {
-    padding: 12,
-    minWidth: 48,
-    minHeight: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    flex: 1,
-  },
-  categoryBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#FFE8E8',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    margin: 16,
-    marginBottom: 8,
-  },
-  categoryText: {
-    color: '#FF6B6B',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#333',
-    paddingHorizontal: 16,
-    marginBottom: 12,
-    lineHeight: 30,
-  },
-  authorInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 20,
-  },
-  authorLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  authorName: {
-    fontSize: 14,
-    color: '#666',
-  },
-  timeText: {
-    fontSize: 12,
-    color: '#999',
-  },
-  contentText: {
-    fontSize: 16,
-    color: '#333',
-    lineHeight: 26,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  postImage: {
-    width: '100%',
-    height: 300,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    gap: 16,
-    marginBottom: 16,
-  },
-  likeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 20,
-  },
-  likeText: {
-    fontSize: 14,
-    color: '#999',
-    fontWeight: '600',
-  },
-  likedText: {
-    color: '#FF6B6B',
-  },
-  divider: {
-    height: 8,
-    backgroundColor: '#f5f5f5',
-    marginVertical: 16,
-  },
-  commentsSection: {
-    paddingHorizontal: 16,
-    paddingBottom: 100,
-  },
-  commentsTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 16,
-  },
-  commentItem: {
-    marginBottom: 20,
-  },
-  commentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  commentAuthor: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
-  commentRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  commentTime: {
-    fontSize: 12,
-    color: '#999',
-  },
-  deleteCommentButton: {
-    padding: 4,
-  },
-  commentContent: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-  },
-  commentInputContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    backgroundColor: '#fff',
-    gap: 8,
-  },
-  commentInputWrapper: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  anonymousToggleRow: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  anonymousToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  anonymousText: {
-    fontSize: 13,
-    color: '#999',
-  },
-  anonymousTextActive: {
-    color: '#FF6B6B',
-    fontWeight: '600',
-  },
-  commentInput: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 14,
-    maxHeight: 100,
-    color: '#333',
-  },
-  submitButton: {
-    backgroundColor: '#FF6B6B',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  headerBackButton: { padding: 12, minWidth: 48, minHeight: 48, justifyContent: 'center', alignItems: 'center', marginLeft: -12 },
+  headerButtons: { flexDirection: 'row', gap: 8 },
+  headerIconButton: { padding: 8 },
+  content: { flex: 1 },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+  categoryBadge: { alignSelf: 'flex-start', backgroundColor: '#FFF0F0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginBottom: 12 },
+  categoryText: { color: '#FF6B6B', fontSize: 12, fontWeight: '600' },
+  title: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 12 },
+  authorInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  authorLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  authorName: { fontSize: 14, fontWeight: '600', color: '#666' },
+  timeText: { fontSize: 12, color: '#999' },
+  contentText: { fontSize: 16, lineHeight: 24, color: '#333', marginBottom: 20 },
+  postImage: { width: '100%', height: 250, borderRadius: 12, marginBottom: 20 },
+  statsContainer: { flexDirection: 'row', gap: 20, paddingVertical: 15 },
+  likeButton: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  likeText: { fontSize: 14, color: '#999', fontWeight: '600' },
+  likedText: { color: '#FF6B6B' },
+  divider: { height: 1, backgroundColor: '#eee', marginVertical: 20 },
+  commentsSection: { marginBottom: 20 },
+  commentsTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 15 },
+  commentContainer: { marginBottom: 12 },
+  commentItem: { backgroundColor: '#F9F9F9', padding: 15, borderRadius: 12 },
+  pinnedComment: { backgroundColor: '#FFF8F8', borderWidth: 1, borderColor: '#FFE0E0' },
+  pinnedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
+  pinnedText: { fontSize: 11, color: '#FF6B6B', fontWeight: '600' },
+  commentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  commentAuthor: { fontSize: 14, fontWeight: '600', color: '#333' },
+  commentRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  commentTime: { fontSize: 12, color: '#999' },
+  pinButton: { padding: 4 },
+  deleteCommentButton: { padding: 4 },
+  commentContent: { fontSize: 14, color: '#333', lineHeight: 20, marginBottom: 8 },
+  commentActions: { flexDirection: 'row', gap: 16 },
+  commentLikeButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  commentLikeText: { fontSize: 12, color: '#999' },
+  commentLikedText: { color: '#FF6B6B' },
+  replyButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  replyButtonText: { fontSize: 12, color: '#999' },
+  repliesContainer: { marginTop: 8, marginLeft: 20, borderLeftWidth: 2, borderLeftColor: '#eee', paddingLeft: 12 },
+  replyItem: { flexDirection: 'row', backgroundColor: '#FAFAFA', padding: 12, borderRadius: 8, marginBottom: 8 },
+  replyIcon: { marginRight: 8, marginTop: 2 },
+  replyContent: { flex: 1 },
+  replyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  replyAuthor: { fontSize: 13, fontWeight: '600', color: '#555' },
+  replyRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  replyTime: { fontSize: 11, color: '#999' },
+  deleteReplyButton: { padding: 4 },
+  replyText: { fontSize: 13, color: '#333', lineHeight: 18, marginBottom: 6 },
+  replyActions: { flexDirection: 'row', gap: 12, marginTop: 6 },
+  replyLikeButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  replyLikeText: { fontSize: 11, color: '#999' },
+  replyLikedText: { color: '#FF6B6B' },
+  replyToReplyButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  replyToReplyText: { fontSize: 11, color: '#999' },
+  commentInputContainer: { backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', paddingBottom: Platform.OS === 'ios' ? 0 : 8 },
+  replyingToBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#FFF8F8' },
+  replyingToText: { fontSize: 13, color: '#FF6B6B', fontWeight: '500' },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end' },
+  commentInputWrapper: { flex: 1, backgroundColor: '#F9F9F9', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, marginLeft: 12, marginTop: 12, marginBottom: 12 },
+  anonymousToggleRow: { marginBottom: 8 },
+  anonymousToggle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  anonymousText: { fontSize: 12, color: '#999' },
+  anonymousTextActive: { color: '#FF6B6B', fontWeight: '600' },
+  commentInput: { fontSize: 14, color: '#333', maxHeight: 100 },
+  submitButton: { width: 44, height: 44, backgroundColor: '#FF6B6B', borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12, marginTop: 12, marginBottom: 12 },
 });
