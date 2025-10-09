@@ -39,6 +39,7 @@ export default function PostDetailScreen({ route, navigation }) {
   const [comments, setComments] = useState([]);
   const [isLiked, setIsLiked] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isAnonymousComment, setIsAnonymousComment] = useState(false); // 🔥 익명 댓글 상태 추가
 
   useEffect(() => {
     loadPost();
@@ -148,6 +149,7 @@ export default function PostDetailScreen({ route, navigation }) {
     }
   };
 
+  // 🔥 익명 댓글 기능이 추가된 handleAddComment
   const handleAddComment = async () => {
     if (!comment.trim()) {
       Alert.alert('알림', '댓글 내용을 입력해주세요.');
@@ -159,7 +161,8 @@ export default function PostDetailScreen({ route, navigation }) {
       await addDoc(commentsRef, {
         content: comment,
         authorId: user.uid,
-        author: user.displayName || '익명',
+        author: isAnonymousComment ? '익명' : (user.displayName || '익명'),
+        isAnonymous: isAnonymousComment,
         createdAt: new Date(),
       });
 
@@ -169,6 +172,7 @@ export default function PostDetailScreen({ route, navigation }) {
       });
 
       setComment('');
+      setIsAnonymousComment(false); // 익명 토글 초기화
       loadComments();
       loadPost();
       Alert.alert('성공', '댓글이 작성되었습니다.');
@@ -323,7 +327,6 @@ export default function PostDetailScreen({ route, navigation }) {
 
           <Text style={styles.contentText}>{postData.content}</Text>
 
-          {/* 이미지 표시 */}
           {postData.imageUrl && (
             <Image 
               source={{ uri: postData.imageUrl }} 
@@ -376,14 +379,35 @@ export default function PostDetailScreen({ route, navigation }) {
           </View>
         </ScrollView>
 
+        {/* 🔥 익명 댓글 옵션이 추가된 댓글 입력창 */}
         <View style={styles.commentInputContainer}>
-          <TextInput
-            style={styles.commentInput}
-            placeholder="댓글을 입력하세요..."
-            value={comment}
-            onChangeText={setComment}
-            multiline
-          />
+          <View style={styles.commentInputWrapper}>
+            <View style={styles.anonymousToggleRow}>
+              <TouchableOpacity
+                style={styles.anonymousToggle}
+                onPress={() => setIsAnonymousComment(!isAnonymousComment)}
+              >
+                <Ionicons 
+                  name={isAnonymousComment ? "checkbox" : "square-outline"} 
+                  size={20} 
+                  color={isAnonymousComment ? "#FF6B6B" : "#999"} 
+                />
+                <Text style={[
+                  styles.anonymousText,
+                  isAnonymousComment && styles.anonymousTextActive
+                ]}>
+                  익명으로 작성
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="댓글을 입력하세요..."
+              value={comment}
+              onChangeText={setComment}
+              multiline
+            />
+          </View>
           <TouchableOpacity
             style={styles.submitButton}
             onPress={handleAddComment}
@@ -566,27 +590,52 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 20,
   },
+  // 🔥 익명 댓글 입력창 스타일
   commentInputContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     padding: 12,
     borderTopWidth: 1,
     borderTopColor: '#eee',
     backgroundColor: '#fff',
     gap: 8,
   },
-  commentInput: {
+  commentInputWrapper: {
     flex: 1,
     backgroundColor: '#f5f5f5',
     borderRadius: 20,
+    overflow: 'hidden',
+  },
+  anonymousToggleRow: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  anonymousToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  anonymousText: {
+    fontSize: 13,
+    color: '#999',
+  },
+  anonymousTextActive: {
+    color: '#FF6B6B',
+    fontWeight: '600',
+  },
+  commentInput: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 14,
     maxHeight: 100,
+    color: '#333',
   },
   submitButton: {
     backgroundColor: '#FF6B6B',
@@ -595,5 +644,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 4,
   },
 });

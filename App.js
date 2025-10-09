@@ -24,6 +24,8 @@ import ProfileScreen from './screens/ProfileScreen';
 import CompatibilityScreen from './screens/CompatibilityScreen';
 import LikedPostsScreen from './screens/LikedPostsScreen';
 import CommentedPostsScreen from './screens/CommentedPostsScreen';
+import TermsScreen from './screens/TermsScreen';
+import PrivacyScreen from './screens/PrivacyScreen';
 
 function BoardScreen({ navigation }) {
   return <HomeScreen navigation={navigation} category="연애상담" />;
@@ -96,6 +98,36 @@ function MainStack() {
       <Stack.Screen name="EditPost" component={EditPostScreen} />
       <Stack.Screen name="LikedPosts" component={LikedPostsScreen} />
       <Stack.Screen name="CommentedPosts" component={CommentedPostsScreen} />
+      <Stack.Screen 
+        name="Terms" 
+        component={TermsScreen}
+        options={{ 
+          headerShown: true,
+          title: '이용약관',
+          headerStyle: {
+            backgroundColor: '#FF6B6B',
+          },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontWeight: 'bold',
+          },
+        }}
+      />
+      <Stack.Screen 
+        name="Privacy" 
+        component={PrivacyScreen}
+        options={{ 
+          headerShown: true,
+          title: '개인정보 처리방침',
+          headerStyle: {
+            backgroundColor: '#FF6B6B',
+          },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontWeight: 'bold',
+          },
+        }}
+      />
     </Stack.Navigator>
   );
 }
@@ -110,6 +142,36 @@ function AuthStack() {
       <Stack.Screen name="Auth" component={AuthScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
+      <Stack.Screen 
+        name="Terms" 
+        component={TermsScreen}
+        options={{ 
+          headerShown: true,
+          title: '이용약관',
+          headerStyle: {
+            backgroundColor: '#FF6B6B',
+          },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontWeight: 'bold',
+          },
+        }}
+      />
+      <Stack.Screen 
+        name="Privacy" 
+        component={PrivacyScreen}
+        options={{ 
+          headerShown: true,
+          title: '개인정보 처리방침',
+          headerStyle: {
+            backgroundColor: '#FF6B6B',
+          },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontWeight: 'bold',
+          },
+        }}
+      />
     </Stack.Navigator>
   );
 }

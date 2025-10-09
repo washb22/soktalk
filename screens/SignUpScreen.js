@@ -27,8 +27,46 @@ export default function SignUpScreen({ navigation }) {
   const [introduction, setIntroduction] = useState('');
   const [currentSituation, setCurrentSituation] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // 약관 동의 상태
+  const [agreeAll, setAgreeAll] = useState(false);
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [agreePrivacy, setAgreePrivacy] = useState(false);
+  const [agreeAge, setAgreeAge] = useState(false);
+
+  // 전체 동의 토글
+  const handleAgreeAll = () => {
+    const newValue = !agreeAll;
+    setAgreeAll(newValue);
+    setAgreeTerms(newValue);
+    setAgreePrivacy(newValue);
+    setAgreeAge(newValue);
+  };
+
+  // 개별 약관 체크 시 전체 동의 상태 업데이트
+  const handleIndividualAgree = (type) => {
+    if (type === 'terms') {
+      const newValue = !agreeTerms;
+      setAgreeTerms(newValue);
+      setAgreeAll(newValue && agreePrivacy && agreeAge);
+    } else if (type === 'privacy') {
+      const newValue = !agreePrivacy;
+      setAgreePrivacy(newValue);
+      setAgreeAll(agreeTerms && newValue && agreeAge);
+    } else if (type === 'age') {
+      const newValue = !agreeAge;
+      setAgreeAge(newValue);
+      setAgreeAll(agreeTerms && agreePrivacy && newValue);
+    }
+  };
 
   const validateForm = () => {
+    // 약관 동의 확인
+    if (!agreeTerms || !agreePrivacy || !agreeAge) {
+      Alert.alert('알림', '필수 약관에 모두 동의해주세요');
+      return false;
+    }
+    
     if (!email.trim()) {
       Alert.alert('알림', '이메일을 입력해주세요');
       return false;
@@ -91,6 +129,9 @@ export default function SignUpScreen({ navigation }) {
         birthYear: parseInt(birthYear),
         introduction: introduction.trim(),
         currentSituation: currentSituation.trim(),
+        agreedToTerms: true,
+        agreedToPrivacy: true,
+        agreedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
       });
 
@@ -159,6 +200,75 @@ export default function SignUpScreen({ navigation }) {
             속마음톡에 오신 것을 환영합니다!{'\n'}
             회원가입 후 자유롭게 고민을 나눠보세요.
           </Text>
+
+          {/* 약관 동의 섹션 */}
+          <View style={styles.termsSection}>
+            <Text style={styles.sectionTitle}>약관 동의</Text>
+            
+            {/* 전체 동의 */}
+            <TouchableOpacity
+              style={styles.agreeAllContainer}
+              onPress={handleAgreeAll}
+            >
+              <Ionicons
+                name={agreeAll ? 'checkbox' : 'square-outline'}
+                size={24}
+                color={agreeAll ? '#FF6B6B' : '#ccc'}
+              />
+              <Text style={styles.agreeAllText}>전체 동의</Text>
+            </TouchableOpacity>
+
+            <View style={styles.termsDivider} />
+
+            {/* 개별 약관 */}
+            <View style={styles.termsItem}>
+              <TouchableOpacity
+                style={styles.checkboxRow}
+                onPress={() => handleIndividualAgree('terms')}
+              >
+                <Ionicons
+                  name={agreeTerms ? 'checkbox' : 'square-outline'}
+                  size={20}
+                  color={agreeTerms ? '#FF6B6B' : '#ccc'}
+                />
+                <Text style={styles.termsText}>[필수] 이용약관 동의</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.navigate('Terms')}>
+                <Text style={styles.viewLink}>보기</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.termsItem}>
+              <TouchableOpacity
+                style={styles.checkboxRow}
+                onPress={() => handleIndividualAgree('privacy')}
+              >
+                <Ionicons
+                  name={agreePrivacy ? 'checkbox' : 'square-outline'}
+                  size={20}
+                  color={agreePrivacy ? '#FF6B6B' : '#ccc'}
+                />
+                <Text style={styles.termsText}>[필수] 개인정보 처리방침 동의</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.navigate('Privacy')}>
+                <Text style={styles.viewLink}>보기</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.termsItem}>
+              <TouchableOpacity
+                style={styles.checkboxRow}
+                onPress={() => handleIndividualAgree('age')}
+              >
+                <Ionicons
+                  name={agreeAge ? 'checkbox' : 'square-outline'}
+                  size={20}
+                  color={agreeAge ? '#FF6B6B' : '#ccc'}
+                />
+                <Text style={styles.termsText}>[필수] 만 14세 이상입니다</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
           {/* 이메일 */}
           <View style={styles.inputGroup}>
@@ -380,6 +490,57 @@ const styles = StyleSheet.create({
     marginBottom: 30,
     textAlign: 'center',
   },
+  // 약관 동의 스타일
+  termsSection: {
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+  },
+  agreeAllContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  agreeAllText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginLeft: 10,
+  },
+  termsDivider: {
+    height: 1,
+    backgroundColor: '#e0e0e0',
+    marginVertical: 12,
+  },
+  termsItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  termsText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  viewLink: {
+    fontSize: 13,
+    color: '#FF6B6B',
+    textDecorationLine: 'underline',
+  },
+  // 기존 스타일들
   inputGroup: {
     marginBottom: 24,
   },

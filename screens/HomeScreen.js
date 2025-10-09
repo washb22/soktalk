@@ -34,6 +34,45 @@ const formatTimeAgo = (date) => {
   return `${Math.floor(diff / 86400)}일 전`;
 };
 
+// 🔥 인기 점수 계산 함수
+const calculatePopularityScore = (post) => {
+  const now = new Date();
+  let postDate = now; // 기본값: 현재 시간
+  
+  // createdAtDate가 유효한지 확인
+  if (post.createdAtDate instanceof Date && !isNaN(post.createdAtDate)) {
+    postDate = post.createdAtDate;
+  }
+  
+  // 게시글 나이 (시간 단위)
+  const ageInHours = Math.max(0, (now - postDate) / (1000 * 60 * 60));
+  
+  // 시간 가중치 계산 (최신 글일수록 높은 점수)
+  let timeWeight = 1.0;
+  if (ageInHours < 24) {
+    timeWeight = 1.5;
+  } else if (ageInHours < 168) { // 7일
+    timeWeight = 1.2;
+  } else if (ageInHours < 720) { // 30일
+    timeWeight = 1.0;
+  } else {
+    timeWeight = 0.8;
+  }
+  
+  // 기본 점수 계산
+  const views = Number(post.views) || 0;
+  const likes = Number(post.likes) || 0;
+  const comments = Number(post.comments) || 0;
+  
+  // 인기 점수 = (조회수 × 1) + (좋아요 × 5) + (댓글 × 10)
+  const baseScore = (views * 1) + (likes * 5) + (comments * 10);
+  
+  // 시간 가중치 적용
+  const finalScore = baseScore * timeWeight;
+  
+  return Math.round(finalScore);
+};
+
 export default function HomeScreen({ navigation, route, category }) {
   const nav = useNavigation();
   const [posts, setPosts] = useState([]);
@@ -59,65 +98,45 @@ export default function HomeScreen({ navigation, route, category }) {
       
       let q;
       if (category) {
+        // 연애상담, 잡담은 최신순 정렬
         q = query(
           postsRef, 
           where('category', '==', category),
+          orderBy('createdAt', 'desc'),
           limit(15)
         );
       } else {
-        q = query(postsRef, orderBy('views', 'desc'), limit(15));
+        // 🔥 인기글: 모든 게시글을 가져와서 점수 계산 후 정렬
+        q = query(postsRef, limit(100)); // 최근 100개 글만 가져오기
       }
       
       const snapshot = await getDocs(q);
       
       if (snapshot.empty) {
-        const tempPosts = [
-          {
-            id: '1',
-            title: '남자친구가 갑자기 연락이 뜸해졌어요',
-            content: '3년 사귄 남자친구가 요즘 연락이 너무 뜸해졌는데...',
-            author: '익명의 토끼',
-            views: 342,
-            likes: 23,
-            comments: 15,
-            category: '연애상담',
-            createdAt: '10분 전'
-          },
-          {
-            id: '2',
-            title: '썸 타는 사람이 있는데 고백 타이밍',
-            content: '2달째 썸타고 있는데 언제 고백하는게 좋을까요?',
-            author: '익명의 고양이',
-            views: 256,
-            likes: 18,
-            comments: 12,
-            category: '연애상담',
-            createdAt: '30분 전'
-          },
-          {
-            id: '3',
-            title: '헤어진 전 여자친구가 자꾸 생각나요',
-            content: '6개월 전에 헤어졌는데 아직도 잊혀지지 않아요...',
-            author: '익명의 강아지',
-            views: 189,
-            likes: 14,
-            comments: 8,
-            category: '잡담',
-            createdAt: '1시간 전'
-          },
-        ];
-        
-        setPosts(
-          category 
-            ? tempPosts.filter(p => p.category === category)
-            : tempPosts
-        );
+        setPosts([]);
         setTotalPages(1);
         return;
       }
       
-      const postsData = snapshot.docs.map(doc => {
+      let postsData = snapshot.docs.map(doc => {
         const data = doc.data();
+        
+        // createdAt을 안전하게 처리
+        let createdAtDate = null;
+        let createdAtFormatted = '방금 전';
+        
+        try {
+          if (data.createdAt?.toDate) {
+            createdAtDate = data.createdAt.toDate();
+            createdAtFormatted = formatTimeAgo(createdAtDate);
+          } else if (data.createdAt instanceof Date) {
+            createdAtDate = data.createdAt;
+            createdAtFormatted = formatTimeAgo(createdAtDate);
+          }
+        } catch (error) {
+          console.log('createdAt 파싱 에러:', error);
+        }
+        
         return {
           id: String(doc.id),
           title: String(data.title || '제목 없음'),
@@ -125,14 +144,40 @@ export default function HomeScreen({ navigation, route, category }) {
           author: String(data.author || '익명'),
           views: Number(data.views || 0),
           likes: Number(data.likes || 0),
-          comments: Number(data.comments || 0),
+          comments: Number(data.commentsCount || 0),
           category: String(data.category || '잡담'),
-          createdAt: data.createdAt?.toDate ? formatTimeAgo(data.createdAt.toDate()) : '방금 전',
+          createdAtDate: createdAtDate,
+          createdAtFormatted: String(createdAtFormatted),
         };
       });
       
-      setPosts(postsData);
-      setTotalPages(Math.ceil(snapshot.size / 15));
+      // 🔥 인기글인 경우 점수 계산 후 정렬
+      if (!category) {
+        postsData = postsData
+          .map(post => ({
+            ...post,
+            popularityScore: calculatePopularityScore(post)
+          }))
+          .sort((a, b) => b.popularityScore - a.popularityScore)
+          .slice(0, 15); // 상위 15개만 표시
+      }
+      
+      // 최종 데이터 준비
+      const finalPostsData = postsData.map(post => ({
+        id: String(post.id),
+        title: String(post.title),
+        content: String(post.content),
+        author: String(post.author),
+        views: Number(post.views),
+        likes: Number(post.likes),
+        comments: Number(post.comments),
+        category: String(post.category),
+        createdAt: String(post.createdAtFormatted),
+        popularityScore: post.popularityScore ? Number(post.popularityScore) : undefined
+      }));
+      
+      setPosts(finalPostsData);
+      setTotalPages(Math.ceil(finalPostsData.length / 15));
     } catch (error) {
       console.log('게시글 로딩 에러:', error);
       setPosts([]);
@@ -168,38 +213,47 @@ export default function HomeScreen({ navigation, route, category }) {
     return '인기글';
   };
 
-  const renderPost = ({ item }) => (
+  const renderPost = ({ item, index }) => (
     <TouchableOpacity 
       style={styles.postCard}
       onPress={() => nav.navigate('PostDetail', { post: item })}
     >
       <View style={styles.postHeader}>
-        <Text style={styles.category}>{item.category}</Text>
-        <Text style={styles.time}>{item.createdAt}</Text>
+        <Text style={styles.category}>{String(item.category || '잡담')}</Text>
+        <View style={styles.headerRight}>
+          {/* 🏆 인기글 1~5위만 표시 */}
+          {!category && index < 5 && (
+            <View style={styles.rankBadge}>
+              <Ionicons name="trophy" size={14} color="#FFB800" />
+              <Text style={styles.rankText}>{index + 1}위</Text>
+            </View>
+          )}
+          <Text style={styles.time}>{String(item.createdAt || '방금 전')}</Text>
+        </View>
       </View>
       
       <Text style={styles.postTitle} numberOfLines={2}>
-        {item.title}
+        {String(item.title || '제목 없음')}
       </Text>
       
       <Text style={styles.postContent} numberOfLines={2}>
-        {item.content}
+        {String(item.content || '')}
       </Text>
       
       <View style={styles.postFooter}>
-        <Text style={styles.author}>{item.author}</Text>
+        <Text style={styles.author}>{String(item.author || '익명')}</Text>
         <View style={styles.stats}>
           <View style={[styles.stat, { marginLeft: 0 }]}>
             <Ionicons name="eye-outline" size={16} color="#999" />
-            <Text style={styles.statText}>{item.views}</Text>
+            <Text style={styles.statText}>{String(item.views || 0)}</Text>
           </View>
           <View style={styles.stat}>
             <Ionicons name="heart-outline" size={16} color="#999" />
-            <Text style={styles.statText}>{item.likes}</Text>
+            <Text style={styles.statText}>{String(item.likes || 0)}</Text>
           </View>
           <View style={styles.stat}>
             <Ionicons name="chatbubble-outline" size={16} color="#999" />
-            <Text style={styles.statText}>{item.comments}</Text>
+            <Text style={styles.statText}>{String(item.comments || 0)}</Text>
           </View>
         </View>
       </View>
@@ -208,20 +262,22 @@ export default function HomeScreen({ navigation, route, category }) {
 
   return (
     <View style={styles.container}>
-      {/* 헤더 추가 */}
+      {/* 헤더 */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{getHeaderTitle()}</Text>
         <TouchableOpacity 
           style={styles.writeButton}
-          onPress={() => nav.navigate('WritePost')}
+          onPress={() => nav.navigate('WritePost', { 
+            category: category || '연애상담'
+          })}
         >
-          <Ionicons name="create-outline" size={24} color="#FF6B6B" />
+          <Ionicons name="create-outline" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
 
       <FlatList
         data={posts}
-        renderItem={renderPost}
+        renderItem={({ item, index }) => renderPost({ item, index })}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         refreshControl={
@@ -266,7 +322,9 @@ export default function HomeScreen({ navigation, route, category }) {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => nav.navigate('WritePost')}
+        onPress={() => nav.navigate('WritePost', { 
+          category: category || '연애상담'
+        })}
       >
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
@@ -317,6 +375,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   category: {
     fontSize: 12,
     color: '#FF6B6B',
@@ -325,6 +388,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  // 🏆 순위 뱃지 스타일
+  rankBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF9E6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  rankText: {
+    fontSize: 12,
+    color: '#FFB800',
+    fontWeight: 'bold',
   },
   time: {
     fontSize: 12,

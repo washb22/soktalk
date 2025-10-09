@@ -76,7 +76,8 @@ export default function ProfileScreen({ navigation }) {
 
       const userDocRef = doc(db, 'users', user.uid);
       const userDocSnap = await getDoc(userDocRef);
-      const visitCount = userDocSnap.exists() ? userDocSnap.data().visitCount || 1 : 1;
+      const visitCount = userDocSnap.exists() ? 
+        userDocSnap.data().visitCount || 1 : 1;
 
       setStats({
         postsCount,
@@ -104,7 +105,8 @@ export default function ProfileScreen({ navigation }) {
           ...doc.data(),
         }));
         setPosts(postsData);
-      } else if (activeTab === 'bookmarked') {
+      } 
+      else if (activeTab === 'bookmarked') {
         const q = query(
           collection(db, 'bookmarks'),
           where('userId', '==', user.uid),
@@ -126,21 +128,24 @@ export default function ProfileScreen({ navigation }) {
           }
         }
         setBookmarkedPosts(bookmarkedData);
-      } else if (activeTab === 'compatibility') {
-        const q = query(
-          collection(db, 'compatibility'),
-          where('userId', '==', user.uid),
-          orderBy('createdAt', 'desc')
-        );
+      } 
+      // 🔥 궁합 히스토리 로딩 추가
+      else if (activeTab === 'compatibility') {
+        const historyRef = collection(db, 'users', user.uid, 'compatibilityHistory');
+        const q = query(historyRef, orderBy('createdAt', 'desc'));
         const snapshot = await getDocs(q);
-        const compatibilityData = snapshot.docs.map(doc => ({
+        
+        const historyData = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
         }));
-        setCompatibilityHistory(compatibilityData);
+        
+        console.log('궁합 히스토리 로드됨:', historyData);
+        setCompatibilityHistory(historyData);
       }
     } catch (error) {
       console.error('데이터 로드 에러:', error);
+      Alert.alert('오류', '데이터를 불러오는 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
@@ -207,38 +212,62 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
   
-  const renderCompatibilityItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.postCard}
-      onPress={() => {
-        Alert.alert(
-          `${item.myName} ❤️ ${item.partnerName}`,
-          `궁합 ${item.result.percentage}%\n\n${item.result.headline}\n\n${item.result.summary}\n\n강점: ${item.result.strengths}\n\n주의: ${item.result.watchouts}\n\n팁: ${item.result.tip}`,
-          [{ text: '확인' }]
-        );
-      }}
-    >
-      <View style={styles.categoryBadge}>
-        <Text style={styles.categoryText}>궁합</Text>
-      </View>
-      <Text style={styles.postTitle}>{item.myName} ❤️ {item.partnerName}</Text>
-      <Text style={styles.postContent} numberOfLines={1}>
-        {item.result.headline}
-      </Text>
-      <View style={styles.postMeta}>
-        <View style={styles.metaItem}>
-          <Ionicons name="heart" size={16} color="#FF6B6B" />
-          <Text style={styles.metaText}>{item.result.percentage}%</Text>
+  // 🔥 궁합 히스토리 아이템 렌더링
+  const renderCompatibilityItem = ({ item }) => {
+    const createdDate = item.createdAt?.toDate ? 
+      item.createdAt.toDate().toLocaleDateString('ko-KR') : 
+      '날짜 없음';
+
+    return (
+      <TouchableOpacity 
+        style={styles.compatibilityCard}
+        onPress={() => {
+          Alert.alert(
+            `${item.myName} ❤️ ${item.partnerName}`,
+            `궁합 ${item.result?.percentage || 0}%\n\n${item.result?.headline || ''}\n\n${item.result?.summary || ''}\n\n강점: ${item.result?.strengths || ''}\n\n주의: ${item.result?.watchouts || ''}\n\n팁: ${item.result?.tip || ''}`,
+            [{ text: '확인' }]
+          );
+        }}
+      >
+        <View style={styles.compatibilityHeader}>
+          <Text style={styles.compatibilityNames}>
+            {item.myName} ❤️ {item.partnerName}
+          </Text>
+          <Text style={styles.compatibilityDate}>{createdDate}</Text>
         </View>
-        <View style={styles.metaItem}>
-          <Ionicons name="time-outline" size={16} color="#999" />
-          <Text style={styles.metaText}>
-            {item.createdAt?.toDate().toLocaleDateString('ko-KR')}
+        
+        <View style={styles.compatibilityResult}>
+          <View style={styles.percentageCircle}>
+            <Text style={styles.percentageText}>
+              {item.result?.percentage || 0}%
+            </Text>
+          </View>
+          <View style={styles.compatibilityDetails}>
+            <Text style={styles.compatibilityHeadline}>
+              {item.result?.headline || ''}
+            </Text>
+            <Text style={styles.compatibilitySummary} numberOfLines={2}>
+              {item.result?.summary || ''}
+            </Text>
+          </View>
+        </View>
+        
+        <View style={styles.compatibilityInfo}>
+          <Text style={styles.infoLabel}>내 정보: </Text>
+          <Text style={styles.infoText}>
+            {item.myName} ({item.myGender}, {item.myBirthDate})
           </Text>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+        
+        <View style={styles.compatibilityInfo}>
+          <Text style={styles.infoLabel}>상대 정보: </Text>
+          <Text style={styles.infoText}>
+            {item.partnerName} ({item.partnerGender}, {item.partnerBirthDate})
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const renderPostItem = ({ item }) => (
     <TouchableOpacity
@@ -331,20 +360,14 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.statNumber}>{stats.postsCount}</Text>
             <Text style={styles.statLabel}>작성글</Text>
           </View>
-          <TouchableOpacity 
-            style={styles.statItem}
-            onPress={() => navigation.navigate('LikedPosts')}
-          >
+          <View style={styles.statItem}>
             <Text style={styles.statNumber}>{stats.likesCount}</Text>
             <Text style={styles.statLabel}>좋아요</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.statItem}
-            onPress={() => navigation.navigate('CommentedPosts')}
-          >
+          </View>
+          <View style={styles.statItem}>
             <Text style={styles.statNumber}>{stats.commentsCount}</Text>
             <Text style={styles.statLabel}>댓글</Text>
-          </TouchableOpacity>
+          </View>
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{stats.visitCount}</Text>
             <Text style={styles.statLabel}>방문</Text>
@@ -362,6 +385,7 @@ export default function ProfileScreen({ navigation }) {
             <Ionicons name="create-outline" size={18} color="#FF6B6B" />
             <Text style={styles.editButtonText}>닉네임 변경</Text>
           </TouchableOpacity>
+
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={18} color="#666" />
             <Text style={styles.logoutButtonText}>로그아웃</Text>
@@ -378,17 +402,14 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>닉네임 변경</Text>
-            
             <TextInput
               style={styles.modalInput}
-              placeholder="새 닉네임 (2-20자)"
-              placeholderTextColor="#999"
+              placeholder="새 닉네임 입력 (2-20자)"
               value={newNickname}
               onChangeText={setNewNickname}
               maxLength={20}
               autoFocus
             />
-
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalCancelButton]}
@@ -396,16 +417,14 @@ export default function ProfileScreen({ navigation }) {
                   setNicknameModalVisible(false);
                   setNewNickname('');
                 }}
-                disabled={updatingNickname}
               >
                 <Text style={styles.modalCancelButtonText}>취소</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={[
-                  styles.modalButton, 
+                  styles.modalButton,
                   styles.modalConfirmButton,
-                  updatingNickname && styles.modalButtonDisabled
+                  updatingNickname && styles.modalButtonDisabled,
                 ]}
                 onPress={handleNicknameChange}
                 disabled={updatingNickname}
@@ -456,7 +475,6 @@ export default function ProfileScreen({ navigation }) {
   );
 }
 
-// 기존 스타일 동일
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -687,5 +705,82 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 12,
     color: '#999',
+  },
+  // 🔥 궁합 카드 스타일 추가
+  compatibilityCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  compatibilityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  compatibilityNames: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+  },
+  compatibilityDate: {
+    fontSize: 12,
+    color: '#999',
+  },
+  compatibilityResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  percentageCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FF6B6B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  percentageText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  compatibilityDetails: {
+    flex: 1,
+  },
+  compatibilityHeadline: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  compatibilitySummary: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  compatibilityInfo: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  infoLabel: {
+    fontSize: 13,
+    color: '#999',
+    fontWeight: '600',
+  },
+  infoText: {
+    fontSize: 13,
+    color: '#666',
+    flex: 1,
   },
 });
