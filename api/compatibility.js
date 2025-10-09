@@ -150,7 +150,7 @@ async function callOpenAI({ apiKey, system, user, score, seed }) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'gpt-5-mini',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user }
