@@ -1,5 +1,5 @@
 // screens/CompatibilityScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,13 +9,18 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { db, auth } from '../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, orderBy } from 'firebase/firestore';
 
 export default function CompatibilityScreen() {
+  // 탭 상태
+  const [activeTab, setActiveTab] = useState('analysis'); // 'analysis' or 'advice'
+  
+  // 궁합 분석 상태
   const [myName, setMyName] = useState('');
   const [myBirthDate, setMyBirthDate] = useState(new Date());
   const [myGender, setMyGender] = useState('');
@@ -26,6 +31,45 @@ export default function CompatibilityScreen() {
   const [showPartnerDatePicker, setShowPartnerDatePicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+
+  // 오늘의 조언 상태
+  const [selectedPartner, setSelectedPartner] = useState(null);
+  const [situation, setSituation] = useState('');
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const [adviceResult, setAdviceResult] = useState(null);
+  const [partnersList, setPartnersList] = useState([]);
+
+  const SITUATION_EXAMPLES = [
+    '오늘 싸웠어요',
+    '내일 만나요',
+    '고백하고 싶어요',
+    '연락이 뜸해요',
+    '화해하고 싶어요',
+  ];
+
+  useEffect(() => {
+    loadPartnersList();
+  }, []);
+
+  const loadPartnersList = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+      const historyRef = collection(db, 'users', user.uid, 'compatibilityHistory');
+      const q = query(historyRef, orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
+      
+      const partners = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      
+      setPartnersList(partners);
+    } catch (error) {
+      console.error('파트너 목록 로드 에러:', error);
+    }
+  };
 
   const formatDate = (date) => {
     const year = date.getFullYear();
@@ -58,8 +102,6 @@ export default function CompatibilityScreen() {
 
     setLoading(true);
     try {
-      console.log('API 호출 시작...');
-      
       const response = await fetch('https://soktalk.vercel.app/api/compatibility', {
         method: 'POST',
         headers: {
@@ -75,10 +117,7 @@ export default function CompatibilityScreen() {
         }),
       });
 
-      console.log('응답 상태:', response.status);
-
       const data = await response.json();
-      console.log('받은 데이터:', data);
       
       if (data.success && data.result) {
         const parsed = parseResult(data.result);
@@ -98,7 +137,9 @@ export default function CompatibilityScreen() {
               result: parsed,
               createdAt: serverTimestamp(),
             });
-            console.log('궁합 결과 저장 완료');
+            
+            // 파트너 목록 갱신
+            loadPartnersList();
           } catch (saveError) {
             console.error('저장 실패:', saveError);
           }
@@ -122,7 +163,64 @@ export default function CompatibilityScreen() {
     setPartnerGender('');
   };
 
-  if (result) {
+  // 🆕 오늘의 조언 받기
+  const handleGetAdvice = async () => {
+    if (!selectedPartner) {
+      Alert.alert('알림', '상대방을 선택해주세요.');
+      return;
+    }
+
+    if (!situation.trim()) {
+      Alert.alert('알림', '현재 상황을 입력해주세요.');
+      return;
+    }
+
+    setAdviceLoading(true);
+    try {
+      const response = await fetch('https://soktalk.vercel.app/api/advice', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          partnerName: selectedPartner.partnerName,
+          situation: situation,
+          compatibilityScore: selectedPartner.result.percentage,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.advice) {
+        setAdviceResult(data.advice);
+
+        // 조언 히스토리 저장
+        const user = auth.currentUser;
+        if (user) {
+          try {
+            await addDoc(collection(db, 'users', user.uid, 'adviceHistory'), {
+              partnerName: selectedPartner.partnerName,
+              situation: situation,
+              advice: data.advice,
+              createdAt: serverTimestamp(),
+            });
+          } catch (saveError) {
+            console.error('조언 저장 실패:', saveError);
+          }
+        }
+      } else {
+        throw new Error('유효하지 않은 응답');
+      }
+    } catch (error) {
+      console.error('에러:', error);
+      Alert.alert('오류', '조언을 받는 중 오류가 발생했습니다.');
+    } finally {
+      setAdviceLoading(false);
+    }
+  };
+
+  // 궁합 분석 결과 화면
+  if (result && activeTab === 'analysis') {
     return (
       <ScrollView style={styles.container}>
         <View style={styles.resultContainer}>
@@ -178,122 +276,240 @@ export default function CompatibilityScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>오늘의 궁합</Text>
-        <Text style={styles.subtitle}>1일 1회 무료 궁합보기</Text>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>내 정보</Text>
-          
-          <TextInput
-            style={styles.input}
-            placeholder="이름"
-            value={myName}
-            onChangeText={setMyName}
-          />
-
-          <TouchableOpacity
-            style={styles.dateButton}
-            onPress={() => setShowMyDatePicker(true)}
-          >
-            <Text>{formatDate(myBirthDate)}</Text>
-          </TouchableOpacity>
-
-          {showMyDatePicker && (
-            <DateTimePicker
-              value={myBirthDate}
-              mode="date"
-              display="default"
-              onChange={(event, selectedDate) => {
-                setShowMyDatePicker(false);
-                if (selectedDate) setMyBirthDate(selectedDate);
-              }}
-            />
-          )}
-
-          <View style={styles.genderContainer}>
-            <TouchableOpacity
-              style={[styles.genderButton, myGender === '남성' && styles.genderButtonActive]}
-              onPress={() => setMyGender('남성')}
-            >
-              <Text style={myGender === '남성' ? styles.genderTextActive : styles.genderText}>
-                남성
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.genderButton, myGender === '여성' && styles.genderButtonActive]}
-              onPress={() => setMyGender('여성')}
-            >
-              <Text style={myGender === '여성' ? styles.genderTextActive : styles.genderText}>
-                여성
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>상대 정보</Text>
-          
-          <TextInput
-            style={styles.input}
-            placeholder="이름"
-            value={partnerName}
-            onChangeText={setPartnerName}
-          />
-
-          <TouchableOpacity
-            style={styles.dateButton}
-            onPress={() => setShowPartnerDatePicker(true)}
-          >
-            <Text>{formatDate(partnerBirthDate)}</Text>
-          </TouchableOpacity>
-
-          {showPartnerDatePicker && (
-            <DateTimePicker
-              value={partnerBirthDate}
-              mode="date"
-              display="default"
-              onChange={(event, selectedDate) => {
-                setShowPartnerDatePicker(false);
-                if (selectedDate) setPartnerBirthDate(selectedDate);
-              }}
-            />
-          )}
-
-          <View style={styles.genderContainer}>
-            <TouchableOpacity
-              style={[styles.genderButton, partnerGender === '남성' && styles.genderButtonActive]}
-              onPress={() => setPartnerGender('남성')}
-            >
-              <Text style={partnerGender === '남성' ? styles.genderTextActive : styles.genderText}>
-                남성
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.genderButton, partnerGender === '여성' && styles.genderButtonActive]}
-              onPress={() => setPartnerGender('여성')}
-            >
-              <Text style={partnerGender === '여성' ? styles.genderTextActive : styles.genderText}>
-                여성
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
+    <View style={styles.container}>
+      {/* 탭 헤더 */}
+      <View style={styles.tabContainer}>
         <TouchableOpacity
-          style={styles.analyzeButton}
-          onPress={handleAnalyze}
-          disabled={loading}
+          style={[styles.tab, activeTab === 'analysis' && styles.activeTab]}
+          onPress={() => setActiveTab('analysis')}
         >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.analyzeButtonText}>궁합 분석하기</Text>
-          )}
+          <Text style={[styles.tabText, activeTab === 'analysis' && styles.activeTabText]}>
+            궁합 분석
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'advice' && styles.activeTab]}
+          onPress={() => setActiveTab('advice')}
+        >
+          <Text style={[styles.tabText, activeTab === 'advice' && styles.activeTabText]}>
+            오늘의 조언
+          </Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+
+      {/* 궁합 분석 탭 */}
+      {activeTab === 'analysis' && (
+        <ScrollView style={styles.content}>
+          <Text style={styles.title}>오늘의 궁합</Text>
+          <Text style={styles.subtitle}>1일 1회 무료 궁합보기</Text>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>내 정보</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="이름"
+              value={myName}
+              onChangeText={setMyName}
+            />
+
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowMyDatePicker(true)}
+            >
+              <Text>{formatDate(myBirthDate)}</Text>
+            </TouchableOpacity>
+
+            {showMyDatePicker && (
+              <DateTimePicker
+                value={myBirthDate}
+                mode="date"
+                display="default"
+                onChange={(event, selectedDate) => {
+                  setShowMyDatePicker(false);
+                  if (selectedDate) setMyBirthDate(selectedDate);
+                }}
+              />
+            )}
+
+            <View style={styles.genderContainer}>
+              <TouchableOpacity
+                style={[styles.genderButton, myGender === '남성' && styles.genderButtonActive]}
+                onPress={() => setMyGender('남성')}
+              >
+                <Text style={myGender === '남성' ? styles.genderTextActive : styles.genderText}>
+                  남성
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.genderButton, myGender === '여성' && styles.genderButtonActive]}
+                onPress={() => setMyGender('여성')}
+              >
+                <Text style={myGender === '여성' ? styles.genderTextActive : styles.genderText}>
+                  여성
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>상대 정보</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="이름"
+              value={partnerName}
+              onChangeText={setPartnerName}
+            />
+
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowPartnerDatePicker(true)}
+            >
+              <Text>{formatDate(partnerBirthDate)}</Text>
+            </TouchableOpacity>
+
+            {showPartnerDatePicker && (
+              <DateTimePicker
+                value={partnerBirthDate}
+                mode="date"
+                display="default"
+                onChange={(event, selectedDate) => {
+                  setShowPartnerDatePicker(false);
+                  if (selectedDate) setPartnerBirthDate(selectedDate);
+                }}
+              />
+            )}
+
+            <View style={styles.genderContainer}>
+              <TouchableOpacity
+                style={[styles.genderButton, partnerGender === '남성' && styles.genderButtonActive]}
+                onPress={() => setPartnerGender('남성')}
+              >
+                <Text style={partnerGender === '남성' ? styles.genderTextActive : styles.genderText}>
+                  남성
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.genderButton, partnerGender === '여성' && styles.genderButtonActive]}
+                onPress={() => setPartnerGender('여성')}
+              >
+                <Text style={partnerGender === '여성' ? styles.genderTextActive : styles.genderText}>
+                  여성
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.analyzeButton}
+            onPress={handleAnalyze}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.analyzeButtonText}>궁합 분석하기</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+
+      {/* 오늘의 조언 탭 */}
+      {activeTab === 'advice' && (
+        <ScrollView style={styles.content}>
+          <Text style={styles.title}>💬 오늘의 조언</Text>
+          <Text style={styles.subtitle}>현재 상황에 맞는 조언을 받아보세요</Text>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>상대방 선택</Text>
+            
+            {partnersList.length === 0 ? (
+              <Text style={styles.emptyText}>
+                먼저 궁합 분석을 해주세요!
+              </Text>
+            ) : (
+              <FlatList
+                data={partnersList}
+                keyExtractor={item => item.id}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[
+                      styles.partnerChip,
+                      selectedPartner?.id === item.id && styles.partnerChipActive
+                    ]}
+                    onPress={() => setSelectedPartner(item)}
+                  >
+                    <Text style={[
+                      styles.partnerChipText,
+                      selectedPartner?.id === item.id && styles.partnerChipTextActive
+                    ]}>
+                      {item.partnerName}
+                    </Text>
+                    <Text style={styles.partnerChipScore}>
+                      {item.result?.percentage}%
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+
+          {selectedPartner && (
+            <>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>현재 상황</Text>
+                
+                <View style={styles.examplesContainer}>
+                  {SITUATION_EXAMPLES.map((example, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.exampleChip}
+                      onPress={() => setSituation(example)}
+                    >
+                      <Text style={styles.exampleChipText}>{example}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <TextInput
+                  style={styles.textArea}
+                  placeholder="또는 직접 입력해주세요..."
+                  value={situation}
+                  onChangeText={setSituation}
+                  multiline
+                  numberOfLines={4}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.analyzeButton}
+                onPress={handleGetAdvice}
+                disabled={adviceLoading}
+              >
+                {adviceLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.analyzeButtonText}>조언 받기</Text>
+                )}
+              </TouchableOpacity>
+
+              {adviceResult && (
+                <View style={[styles.card, styles.adviceCard]}>
+                  <View style={styles.cardHeader}>
+                    <Ionicons name="chatbubbles" size={20} color="#FF6B6B" />
+                    <Text style={styles.cardTitle}>AI 조언</Text>
+                  </View>
+                  <Text style={styles.cardText}>{adviceResult}</Text>
+                </View>
+              )}
+            </>
+          )}
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
@@ -302,7 +518,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFF5F5',
   },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomColor: '#FF6B6B',
+  },
+  tabText: {
+    fontSize: 16,
+    color: '#999',
+    fontWeight: '600',
+  },
+  activeTabText: {
+    color: '#FF6B6B',
+  },
   content: {
+    flex: 1,
     padding: 20,
   },
   title: {
@@ -374,6 +615,7 @@ const styles = StyleSheet.create({
     padding: 18,
     alignItems: 'center',
     marginTop: 10,
+    marginBottom: 20,
   },
   analyzeButtonText: {
     color: '#fff',
@@ -435,6 +677,10 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#4CAF50',
   },
+  adviceCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#2196F3',
+  },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -462,5 +708,62 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#999',
+    fontSize: 14,
+    paddingVertical: 20,
+  },
+  partnerChip: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginRight: 10,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  partnerChipActive: {
+    backgroundColor: '#FFE8E8',
+    borderColor: '#FF6B6B',
+  },
+  partnerChipText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '600',
+  },
+  partnerChipTextActive: {
+    color: '#FF6B6B',
+  },
+  partnerChipScore: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
+  examplesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 15,
+  },
+  exampleChip: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 15,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  exampleChipText: {
+    fontSize: 13,
+    color: '#666',
+  },
+  textArea: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    padding: 15,
+    fontSize: 16,
+    height: 100,
+    textAlignVertical: 'top',
   },
 });

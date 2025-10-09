@@ -32,6 +32,8 @@ import {
 } from 'firebase/firestore';
 // 🔔 알림 서비스 import
 import { sendCommentNotification, sendLikeNotification } from '../services/notificationService';
+// 🚨 신고 모달 import
+import ReportModal from '../components/ReportModal';
 
 export default function PostDetailScreen({ route, navigation }) {
   const { post } = route.params;
@@ -42,6 +44,10 @@ export default function PostDetailScreen({ route, navigation }) {
   const [isLiked, setIsLiked] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [isAnonymousComment, setIsAnonymousComment] = useState(false);
+  
+  // 🚨 신고 모달 상태
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportTarget, setReportTarget] = useState(null);
 
   useEffect(() => {
     loadPost();
@@ -282,6 +288,28 @@ export default function PostDetailScreen({ route, navigation }) {
     );
   };
 
+  // 🚨 게시글 신고
+  const handleReportPost = () => {
+    setReportTarget({
+      type: 'post',
+      id: post.id,
+      authorId: postData.authorId,
+      content: `${postData.title}\n\n${postData.content}`,
+    });
+    setReportModalVisible(true);
+  };
+
+  // 🚨 댓글 신고
+  const handleReportComment = (commentData) => {
+    setReportTarget({
+      type: 'comment',
+      id: commentData.id,
+      authorId: commentData.authorId,
+      content: commentData.content,
+    });
+    setReportModalVisible(true);
+  };
+
   if (!postData) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -319,6 +347,16 @@ export default function PostDetailScreen({ route, navigation }) {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>게시글</Text>
           <View style={styles.headerButtons}>
+            {/* 🚨 신고 버튼 (본인 게시글 아닐 때만) */}
+            {postData.authorId !== user.uid && (
+              <TouchableOpacity
+                style={styles.headerIconButton}
+                onPress={handleReportPost}
+              >
+                <Ionicons name="alert-circle-outline" size={24} color="#333" />
+              </TouchableOpacity>
+            )}
+            
             <TouchableOpacity
               style={styles.headerIconButton}
               onPress={toggleBookmark}
@@ -395,25 +433,33 @@ export default function PostDetailScreen({ route, navigation }) {
               댓글 {comments.length}개
             </Text>
 
-            {comments.map((comment) => (
-              <View key={comment.id} style={styles.commentItem}>
+            {comments.map((commentItem) => (
+              <View key={commentItem.id} style={styles.commentItem}>
                 <View style={styles.commentHeader}>
-                  <Text style={styles.commentAuthor}>{comment.author}</Text>
+                  <Text style={styles.commentAuthor}>{commentItem.author}</Text>
                   <View style={styles.commentRight}>
                     <Text style={styles.commentTime}>
-                      {comment.createdAt?.toDate?.().toLocaleDateString('ko-KR')}
+                      {commentItem.createdAt?.toDate?.().toLocaleDateString('ko-KR')}
                     </Text>
-                    {comment.authorId === user.uid && (
+                    {/* 🚨 본인 댓글: 삭제, 남의 댓글: 신고 */}
+                    {commentItem.authorId === user.uid ? (
                       <TouchableOpacity
                         style={styles.deleteCommentButton}
-                        onPress={() => handleDeleteComment(comment.id)}
+                        onPress={() => handleDeleteComment(commentItem.id)}
                       >
                         <Ionicons name="trash-outline" size={16} color="#999" />
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.deleteCommentButton}
+                        onPress={() => handleReportComment(commentItem)}
+                      >
+                        <Ionicons name="alert-circle-outline" size={16} color="#999" />
                       </TouchableOpacity>
                     )}
                   </View>
                 </View>
-                <Text style={styles.commentContent}>{comment.content}</Text>
+                <Text style={styles.commentContent}>{commentItem.content}</Text>
               </View>
             ))}
           </View>
@@ -454,6 +500,19 @@ export default function PostDetailScreen({ route, navigation }) {
             <Ionicons name="send" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
+
+        {/* 🚨 신고 모달 */}
+        <ReportModal
+          visible={reportModalVisible}
+          onClose={() => {
+            setReportModalVisible(false);
+            setReportTarget(null);
+          }}
+          targetType={reportTarget?.type}
+          targetId={reportTarget?.id}
+          targetAuthorId={reportTarget?.authorId}
+          targetContent={reportTarget?.content}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
