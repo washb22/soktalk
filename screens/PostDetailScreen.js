@@ -30,6 +30,8 @@ import {
   deleteDoc,
   setDoc,
 } from 'firebase/firestore';
+// 🔔 알림 서비스 import
+import { sendCommentNotification, sendLikeNotification } from '../services/notificationService';
 
 export default function PostDetailScreen({ route, navigation }) {
   const { post } = route.params;
@@ -39,7 +41,7 @@ export default function PostDetailScreen({ route, navigation }) {
   const [comments, setComments] = useState([]);
   const [isLiked, setIsLiked] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
-  const [isAnonymousComment, setIsAnonymousComment] = useState(false); // 🔥 익명 댓글 상태 추가
+  const [isAnonymousComment, setIsAnonymousComment] = useState(false);
 
   useEffect(() => {
     loadPost();
@@ -120,6 +122,7 @@ export default function PostDetailScreen({ route, navigation }) {
     }
   };
 
+  // 🔔 좋아요 + 알림
   const handleLike = async () => {
     try {
       const postRef = doc(db, 'posts', post.id);
@@ -129,17 +132,35 @@ export default function PostDetailScreen({ route, navigation }) {
       const likesArray = currentData.likesArray || [];
       
       if (isLiked) {
+        // 좋아요 취소
         await updateDoc(postRef, {
           likesArray: arrayRemove(user.uid),
           likes: Math.max((currentData.likes || 1) - 1, 0),
         });
         setIsLiked(false);
       } else {
+        // 좋아요 추가
         await updateDoc(postRef, {
           likesArray: arrayUnion(user.uid),
           likes: (currentData.likes || 0) + 1,
         });
         setIsLiked(true);
+
+        // 🔔 게시글 작성자에게 알림 (본인 게시글 제외)
+        if (postData.authorId && postData.authorId !== user.uid) {
+          const likerName = user.displayName || '사용자';
+          const postTitle = postData.title || '게시글';
+          
+          // 알림 전송
+          await sendLikeNotification(
+            postData.authorId,
+            likerName,
+            postTitle,
+            post.id
+          );
+          
+          console.log('✅ 좋아요 알림 전송 완료');
+        }
       }
       
       loadPost();
@@ -149,7 +170,7 @@ export default function PostDetailScreen({ route, navigation }) {
     }
   };
 
-  // 🔥 익명 댓글 기능이 추가된 handleAddComment
+  // 🔔 댓글 작성 + 알림
   const handleAddComment = async () => {
     if (!comment.trim()) {
       Alert.alert('알림', '댓글 내용을 입력해주세요.');
@@ -157,6 +178,7 @@ export default function PostDetailScreen({ route, navigation }) {
     }
 
     try {
+      // 1. 댓글 작성
       const commentsRef = collection(db, 'posts', post.id, 'comments');
       await addDoc(commentsRef, {
         content: comment,
@@ -166,13 +188,31 @@ export default function PostDetailScreen({ route, navigation }) {
         createdAt: new Date(),
       });
 
+      // 2. 게시글 댓글 수 증가
       const postRef = doc(db, 'posts', post.id);
       await updateDoc(postRef, {
         commentsCount: (postData?.commentsCount || 0) + 1,
       });
 
+      // 🔔 3. 게시글 작성자에게 알림 (본인 게시글 제외)
+      if (postData.authorId && postData.authorId !== user.uid) {
+        const commenterName = isAnonymousComment ? '익명' : (user.displayName || '사용자');
+        const postTitle = postData.title || '게시글';
+        
+        // 알림 전송
+        await sendCommentNotification(
+          postData.authorId,
+          commenterName,
+          postTitle,
+          post.id
+        );
+        
+        console.log('✅ 댓글 알림 전송 완료');
+      }
+
+      // 4. 초기화 및 새로고침
       setComment('');
-      setIsAnonymousComment(false); // 익명 토글 초기화
+      setIsAnonymousComment(false);
       loadComments();
       loadPost();
       Alert.alert('성공', '댓글이 작성되었습니다.');
@@ -379,7 +419,6 @@ export default function PostDetailScreen({ route, navigation }) {
           </View>
         </ScrollView>
 
-        {/* 🔥 익명 댓글 옵션이 추가된 댓글 입력창 */}
         <View style={styles.commentInputContainer}>
           <View style={styles.commentInputWrapper}>
             <View style={styles.anonymousToggleRow}>
@@ -590,7 +629,6 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 20,
   },
-  // 🔥 익명 댓글 입력창 스타일
   commentInputContainer: {
     position: 'absolute',
     bottom: 0,

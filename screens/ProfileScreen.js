@@ -41,6 +41,7 @@ export default function ProfileScreen({ navigation }) {
   });
 
   const [nicknameModalVisible, setNicknameModalVisible] = useState(false);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [newNickname, setNewNickname] = useState('');
   const [updatingNickname, setUpdatingNickname] = useState(false);
 
@@ -129,7 +130,6 @@ export default function ProfileScreen({ navigation }) {
         }
         setBookmarkedPosts(bookmarkedData);
       } 
-      // 🔥 궁합 히스토리 로딩 추가
       else if (activeTab === 'compatibility') {
         const historyRef = collection(db, 'users', user.uid, 'compatibilityHistory');
         const q = query(historyRef, orderBy('createdAt', 'desc'));
@@ -140,12 +140,10 @@ export default function ProfileScreen({ navigation }) {
           ...doc.data(),
         }));
         
-        console.log('궁합 히스토리 로드됨:', historyData);
         setCompatibilityHistory(historyData);
       }
     } catch (error) {
       console.error('데이터 로드 에러:', error);
-      Alert.alert('오류', '데이터를 불러오는 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
@@ -212,7 +210,6 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
   
-  // 🔥 궁합 히스토리 아이템 렌더링
   const renderCompatibilityItem = ({ item }) => {
     const createdDate = item.createdAt?.toDate ? 
       item.createdAt.toDate().toLocaleDateString('ko-KR') : 
@@ -386,13 +383,17 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.editButtonText}>닉네임 변경</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={18} color="#666" />
-            <Text style={styles.logoutButtonText}>로그아웃</Text>
+          <TouchableOpacity 
+            style={styles.settingsButton}
+            onPress={() => setSettingsModalVisible(true)}
+          >
+            <Ionicons name="settings-outline" size={18} color="#666" />
+            <Text style={styles.settingsButtonText}>설정</Text>
           </TouchableOpacity>
         </View>
       </View>
 
+      {/* 닉네임 변경 모달 */}
       <Modal
         visible={nicknameModalVisible}
         transparent={true}
@@ -435,6 +436,87 @@ export default function ProfileScreen({ navigation }) {
                   <Text style={styles.modalConfirmButtonText}>변경</Text>
                 )}
               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 설정 모달 */}
+      <Modal
+        visible={settingsModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setSettingsModalVisible(false)}
+      >
+        <View style={styles.settingsModalOverlay}>
+          <View style={styles.settingsModalContent}>
+            <View style={styles.settingsHeader}>
+              <Text style={styles.settingsTitle}>설정</Text>
+              <TouchableOpacity
+                onPress={() => setSettingsModalVisible(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.settingsItems}>
+              {/* 약관 및 정책 */}
+              <View style={styles.settingsSection}>
+                <Text style={styles.settingsSectionTitle}>약관 및 정책</Text>
+                
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={() => {
+                    setSettingsModalVisible(false);
+                    navigation.navigate('Terms');
+                  }}
+                >
+                  <Ionicons name="document-text-outline" size={20} color="#666" />
+                  <Text style={styles.settingsItemText}>이용약관</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={() => {
+                    setSettingsModalVisible(false);
+                    navigation.navigate('Privacy');
+                  }}
+                >
+                  <Ionicons name="shield-checkmark-outline" size={20} color="#666" />
+                  <Text style={styles.settingsItemText}>개인정보 처리방침</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </TouchableOpacity>
+              </View>
+
+              {/* 계정 */}
+              <View style={styles.settingsSection}>
+                <Text style={styles.settingsSectionTitle}>계정</Text>
+                
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={() => {
+                    setSettingsModalVisible(false);
+                    handleLogout();
+                  }}
+                >
+                  <Ionicons name="log-out-outline" size={20} color="#FF6B6B" />
+                  <Text style={[styles.settingsItemText, { color: '#FF6B6B' }]}>로그아웃</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </TouchableOpacity>
+              </View>
+
+              {/* 앱 정보 */}
+              <View style={styles.settingsSection}>
+                <Text style={styles.settingsSectionTitle}>앱 정보</Text>
+                
+                <View style={styles.settingsItem}>
+                  <Ionicons name="information-circle-outline" size={20} color="#666" />
+                  <Text style={styles.settingsItemText}>버전</Text>
+                  <Text style={styles.versionText}>1.0.0</Text>
+                </View>
+              </View>
             </View>
           </View>
         </View>
@@ -541,7 +623,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  logoutButton: {
+  settingsButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
@@ -552,11 +634,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 5,
   },
-  logoutButtonText: {
+  settingsButtonText: {
     color: '#666',
     fontSize: 14,
     fontWeight: '600',
   },
+  // 닉네임 변경 모달
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -614,6 +697,67 @@ const styles = StyleSheet.create({
   modalButtonDisabled: {
     opacity: 0.5,
   },
+  // 설정 모달
+  settingsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  settingsModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  settingsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  closeButton: {
+    padding: 5,
+  },
+  settingsItems: {
+    padding: 20,
+  },
+  settingsSection: {
+    marginBottom: 30,
+  },
+  settingsSectionTitle: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#999',
+    marginBottom: 15,
+    paddingLeft: 5,
+  },
+  settingsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  settingsItemText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#333',
+    marginLeft: 15,
+  },
+  versionText: {
+    fontSize: 14,
+    color: '#999',
+  },
+  // 탭
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#fff',
@@ -706,7 +850,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
   },
-  // 🔥 궁합 카드 스타일 추가
+  // 궁합 카드
   compatibilityCard: {
     backgroundColor: '#fff',
     borderRadius: 12,

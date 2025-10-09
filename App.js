@@ -1,5 +1,5 @@
 // App.js
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -11,6 +11,13 @@ import { View, Text, StyleSheet } from 'react-native';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { db } from './firebase';
 import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+
+// 푸시 알림 서비스
+import { 
+  registerForPushNotificationsAsync, 
+  savePushToken,
+  setupNotificationListener 
+} from './services/notificationService';
 
 // 화면 컴포넌트들 임포트
 import AuthScreen from './screens/AuthScreen';
@@ -178,12 +185,30 @@ function AuthStack() {
 
 function AppNavigator() {
   const { user, loading } = useAuth();
+  const navigationRef = useRef();
 
+  // 🔔 푸시 알림 초기화
   useEffect(() => {
     if (user) {
+      // 방문 횟수 업데이트
       updateUserVisitCount(user.uid);
+      
+      // 푸시 알림 권한 요청 및 토큰 저장
+      registerForPushNotificationsAsync().then(token => {
+        if (token) {
+          savePushToken(user.uid, token);
+        }
+      });
     }
   }, [user]);
+
+  // 🔔 알림 리스너 설정
+  useEffect(() => {
+    if (navigationRef.current) {
+      const cleanup = setupNotificationListener(navigationRef.current);
+      return cleanup;
+    }
+  }, []);
 
   const updateUserVisitCount = async (userId) => {
     try {
@@ -215,7 +240,7 @@ function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       {user ? <MainStack /> : <AuthStack />}
       <StatusBar style="auto" />
     </NavigationContainer>
