@@ -15,7 +15,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { db, auth } from '../firebase';
-import { collection, addDoc, serverTimestamp, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, orderBy, doc, getDoc, setDoc } from 'firebase/firestore';
+import { InterstitialAd, AdEventType } from 'react-native-google-mobile-ads';
+import { AD_UNITS } from '../services/adsConfig';
+
+// 전면 광고 초기화
+const compatibilityAd = InterstitialAd.createForAdRequest(AD_UNITS.INTERSTITIAL_COMPATIBILITY);
+const adviceAd = InterstitialAd.createForAdRequest(AD_UNITS.INTERSTITIAL_ADVICE);
 
 export default function CompatibilityScreen() {
   const [activeTab, setActiveTab] = useState('analysis');
@@ -37,6 +43,11 @@ export default function CompatibilityScreen() {
   const [adviceResult, setAdviceResult] = useState(null);
   const [partnersList, setPartnersList] = useState([]);
 
+  // 광고 상태
+  const [compatibilityAdLoaded, setCompatibilityAdLoaded] = useState(false);
+  const [adviceAdLoaded, setAdviceAdLoaded] = useState(false);
+  const [todayAnalysisCount, setTodayAnalysisCount] = useState(0);
+
   const SITUATION_EXAMPLES = [
     '오늘 싸웠어요',
     '내일 만나요',
@@ -47,6 +58,39 @@ export default function CompatibilityScreen() {
 
   useEffect(() => {
     loadPartnersList();
+    loadTodayAnalysisCount();
+    
+    // 광고 리스너 설정
+    const compatibilityAdListener = compatibilityAd.addAdEventListener(AdEventType.LOADED, () => {
+      setCompatibilityAdLoaded(true);
+      console.log('✅ 궁합 광고 로드 완료');
+    });
+
+    const compatibilityAdErrorListener = compatibilityAd.addAdEventListener(AdEventType.ERROR, (error) => {
+      console.error('❌ 궁합 광고 로드 실패:', error);
+      setCompatibilityAdLoaded(false);
+    });
+
+    const adviceAdListener = adviceAd.addAdEventListener(AdEventType.LOADED, () => {
+      setAdviceAdLoaded(true);
+      console.log('✅ 조언 광고 로드 완료');
+    });
+
+    const adviceAdErrorListener = adviceAd.addAdEventListener(AdEventType.ERROR, (error) => {
+      console.error('❌ 조언 광고 로드 실패:', error);
+      setAdviceAdLoaded(false);
+    });
+
+    // 광고 미리 로드
+    compatibilityAd.load();
+    adviceAd.load();
+
+    return () => {
+      compatibilityAdListener();
+      compatibilityAdErrorListener();
+      adviceAdListener();
+      adviceAdErrorListener();
+    };
   }, []);
 
   const loadPartnersList = async () => {
@@ -66,6 +110,49 @@ export default function CompatibilityScreen() {
       setPartnersList(partners);
     } catch (error) {
       console.error('파트너 목록 로드 에러:', error);
+    }
+  };
+
+  // 오늘 궁합 분석 횟수 체크
+  const loadTodayAnalysisCount = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const usageRef = doc(db, 'users', user.uid, 'dailyUsage', today);
+      const usageDoc = await getDoc(usageRef);
+      
+      if (usageDoc.exists()) {
+        setTodayAnalysisCount(usageDoc.data().compatibilityCount || 0);
+      } else {
+        setTodayAnalysisCount(0);
+      }
+    } catch (error) {
+      console.error('일일 사용 횟수 로드 에러:', error);
+    }
+  };
+
+  // 오늘 궁합 분석 횟수 증가
+  const incrementTodayAnalysisCount = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const usageRef = doc(db, 'users', user.uid, 'dailyUsage', today);
+      const usageDoc = await getDoc(usageRef);
+      
+      const newCount = usageDoc.exists() ? (usageDoc.data().compatibilityCount || 0) + 1 : 1;
+      
+      await setDoc(usageRef, {
+        compatibilityCount: newCount,
+        lastUpdated: serverTimestamp(),
+      }, { merge: true });
+      
+      setTodayAnalysisCount(newCount);
+    } catch (error) {
+      console.error('일일 사용 횟수 업데이트 에러:', error);
     }
   };
 
@@ -92,10 +179,33 @@ export default function CompatibilityScreen() {
     return { percentage, headline, summary, strengths, watchouts, tip };
   };
 
+  const showCompatibilityAd = async () => {
+    return new Promise((resolve) => {
+      if (compatibilityAdLoaded) {
+        const closeListener = compatibilityAd.addAdEventListener(AdEventType.CLOSED, () => {
+          closeListener();
+          compatibilityAd.load();
+          resolve();
+        });
+        
+        compatibilityAd.show();
+      } else {
+        console.log('광고가 로드되지 않아 건너뜀');
+        resolve();
+      }
+    });
+  };
+
   const handleAnalyze = async () => {
     if (!myName || !myGender || !partnerName || !partnerGender) {
       Alert.alert('알림', '모든 정보를 입력해주세요.');
       return;
+    }
+
+    // 🎯 2회차부터 광고 표시
+    if (todayAnalysisCount >= 1) {
+      console.log('궁합 분석 2회차 이상 - 광고 표시');
+      await showCompatibilityAd();
     }
 
     setLoading(true);
@@ -120,6 +230,8 @@ export default function CompatibilityScreen() {
       if (data.success && data.result) {
         const parsed = parseResult(data.result);
         setResult(parsed);
+
+        await incrementTodayAnalysisCount();
 
         const user = auth.currentUser;
         if (user) {
@@ -159,6 +271,23 @@ export default function CompatibilityScreen() {
     setPartnerGender('');
   };
 
+  const showAdviceAd = async () => {
+    return new Promise((resolve) => {
+      if (adviceAdLoaded) {
+        const closeListener = adviceAd.addAdEventListener(AdEventType.CLOSED, () => {
+          closeListener();
+          adviceAd.load();
+          resolve();
+        });
+        
+        adviceAd.show();
+      } else {
+        console.log('광고가 로드되지 않아 건너뜀');
+        resolve();
+      }
+    });
+  };
+
   const handleGetAdvice = async () => {
     if (!selectedPartner) {
       Alert.alert('알림', '상대방을 선택해주세요.');
@@ -170,50 +299,33 @@ export default function CompatibilityScreen() {
       return;
     }
 
+    // 🎯 조언 받기 전 항상 광고 표시
+    await showAdviceAd();
+
     setAdviceLoading(true);
     try {
-      const timestamp = Date.now();
-      
-      const response = await fetch(`https://soktalk.vercel.app/api/advice?t=${timestamp}`, {
+      const response = await fetch('https://soktalk.vercel.app/api/advice', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           partnerName: selectedPartner.partnerName,
-          situation: situation,
+          situation: situation.trim(),
           compatibilityScore: selectedPartner.result.percentage,
         }),
       });
 
       const data = await response.json();
-      
+
       if (data.success && data.advice) {
         setAdviceResult(data.advice);
-
-        const user = auth.currentUser;
-        if (user) {
-          try {
-            await addDoc(collection(db, 'users', user.uid, 'adviceHistory'), {
-              partnerName: selectedPartner.partnerName,
-              situation: situation,
-              advice: data.advice,
-              createdAt: serverTimestamp(),
-            });
-          } catch (saveError) {
-            console.error('조언 저장 실패:', saveError);
-          }
-        }
       } else {
         throw new Error('유효하지 않은 응답');
       }
     } catch (error) {
-      console.error('에러:', error);
-      Alert.alert(
-        '알림', 
-        'OpenAI API 요청 제한으로 일시적으로 서비스를 이용할 수 없습니다.\n\n1-2분 후에 다시 시도해주세요.',
-        [{ text: '확인' }]
-      );
+      console.error('조언 에러:', error);
+      Alert.alert('오류', '조언을 받아오는 중 오류가 발생했습니다.');
     } finally {
       setAdviceLoading(false);
     }
@@ -225,6 +337,9 @@ export default function CompatibilityScreen() {
         <ScrollView style={styles.container}>
           <View style={styles.resultContainer}>
             <Text style={styles.resultTitle}>궁합 분석 결과</Text>
+            <Text style={styles.dailyUsageText}>
+              오늘 {todayAnalysisCount}회 분석 (2회차부터 광고 표시)
+            </Text>
             
             <View style={styles.percentageCircle}>
               <Text style={styles.percentageText}>{result.percentage}%</Text>
@@ -301,10 +416,14 @@ export default function CompatibilityScreen() {
         {activeTab === 'analysis' && (
           <ScrollView style={styles.content}>
             <Text style={styles.title}>💘 궁합 분석</Text>
-            <Text style={styles.subtitle}>두 사람의 궁합을 확인해보세요</Text>
+            <Text style={styles.subtitle}>생년월일로 궁합을 확인해보세요</Text>
+            <Text style={styles.dailyUsageText}>
+              오늘 {todayAnalysisCount}회 분석 (2회차부터 광고 표시)
+            </Text>
 
+            {/* 나의 정보 */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>내 정보</Text>
+              <Text style={styles.sectionTitle}>나의 정보</Text>
               <TextInput
                 style={styles.input}
                 placeholder="이름"
@@ -312,57 +431,50 @@ export default function CompatibilityScreen() {
                 value={myName}
                 onChangeText={setMyName}
               />
-              
               <TouchableOpacity
-                style={styles.dateButton}
+                style={styles.datePickerButton}
                 onPress={() => setShowMyDatePicker(true)}
               >
-                <Text style={styles.dateButtonText}>
+                <Text style={styles.datePickerText}>
                   생년월일: {formatDate(myBirthDate)}
                 </Text>
+                <Ionicons name="calendar-outline" size={20} color="#FF6B6B" />
               </TouchableOpacity>
-              
               {showMyDatePicker && (
                 <DateTimePicker
                   value={myBirthDate}
                   mode="date"
                   display="spinner"
-                  onChange={(event, date) => {
+                  onChange={(event, selectedDate) => {
                     setShowMyDatePicker(false);
-                    if (date) setMyBirthDate(date);
+                    if (selectedDate) {
+                      setMyBirthDate(selectedDate);
+                    }
                   }}
                   maximumDate={new Date()}
                 />
               )}
-              
               <View style={styles.genderContainer}>
                 <TouchableOpacity
-                  style={[
-                    styles.genderButton,
-                    myGender === 'male' && styles.genderButtonActive,
-                  ]}
+                  style={[styles.genderButton, myGender === 'male' && styles.genderButtonActive]}
                   onPress={() => setMyGender('male')}
                 >
-                  <Ionicons
-                    name="male"
-                    size={20}
+                  <Ionicons 
+                    name="male" 
+                    size={20} 
                     color={myGender === 'male' ? '#fff' : '#FF6B6B'}
                   />
                   <Text style={myGender === 'male' ? styles.genderTextActive : styles.genderText}>
                     남성
                   </Text>
                 </TouchableOpacity>
-                
                 <TouchableOpacity
-                  style={[
-                    styles.genderButton,
-                    myGender === 'female' && styles.genderButtonActive,
-                  ]}
+                  style={[styles.genderButton, myGender === 'female' && styles.genderButtonActive]}
                   onPress={() => setMyGender('female')}
                 >
-                  <Ionicons
-                    name="female"
-                    size={20}
+                  <Ionicons 
+                    name="female" 
+                    size={20} 
                     color={myGender === 'female' ? '#fff' : '#FF6B6B'}
                   />
                   <Text style={myGender === 'female' ? styles.genderTextActive : styles.genderText}>
@@ -372,6 +484,7 @@ export default function CompatibilityScreen() {
               </View>
             </View>
 
+            {/* 상대방 정보 */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>상대방 정보</Text>
               <TextInput
@@ -381,57 +494,50 @@ export default function CompatibilityScreen() {
                 value={partnerName}
                 onChangeText={setPartnerName}
               />
-              
               <TouchableOpacity
-                style={styles.dateButton}
+                style={styles.datePickerButton}
                 onPress={() => setShowPartnerDatePicker(true)}
               >
-                <Text style={styles.dateButtonText}>
+                <Text style={styles.datePickerText}>
                   생년월일: {formatDate(partnerBirthDate)}
                 </Text>
+                <Ionicons name="calendar-outline" size={20} color="#FF6B6B" />
               </TouchableOpacity>
-              
               {showPartnerDatePicker && (
                 <DateTimePicker
                   value={partnerBirthDate}
                   mode="date"
                   display="spinner"
-                  onChange={(event, date) => {
+                  onChange={(event, selectedDate) => {
                     setShowPartnerDatePicker(false);
-                    if (date) setPartnerBirthDate(date);
+                    if (selectedDate) {
+                      setPartnerBirthDate(selectedDate);
+                    }
                   }}
                   maximumDate={new Date()}
                 />
               )}
-              
               <View style={styles.genderContainer}>
                 <TouchableOpacity
-                  style={[
-                    styles.genderButton,
-                    partnerGender === 'male' && styles.genderButtonActive,
-                  ]}
+                  style={[styles.genderButton, partnerGender === 'male' && styles.genderButtonActive]}
                   onPress={() => setPartnerGender('male')}
                 >
-                  <Ionicons
-                    name="male"
-                    size={20}
+                  <Ionicons 
+                    name="male" 
+                    size={20} 
                     color={partnerGender === 'male' ? '#fff' : '#FF6B6B'}
                   />
                   <Text style={partnerGender === 'male' ? styles.genderTextActive : styles.genderText}>
                     남성
                   </Text>
                 </TouchableOpacity>
-                
                 <TouchableOpacity
-                  style={[
-                    styles.genderButton,
-                    partnerGender === 'female' && styles.genderButtonActive,
-                  ]}
+                  style={[styles.genderButton, partnerGender === 'female' && styles.genderButtonActive]}
                   onPress={() => setPartnerGender('female')}
                 >
-                  <Ionicons
-                    name="female"
-                    size={20}
+                  <Ionicons 
+                    name="female" 
+                    size={20} 
                     color={partnerGender === 'female' ? '#fff' : '#FF6B6B'}
                   />
                   <Text style={partnerGender === 'female' ? styles.genderTextActive : styles.genderText}>
@@ -507,7 +613,7 @@ export default function CompatibilityScreen() {
                   </Text>
                   <TextInput
                     style={[styles.input, styles.textArea]}
-                    placeholder="예: 정유미랑 만난 지 3개월 됐어요. 어제 약속을 자기 맘대로 잡아서 너무 화났어요. 아직 사귀는 사이는 아니지만 좋아하는 감정은 확실해요."
+                    placeholder="예: 정유미랑 만난 지 3개월 됐어요. 어제 약속을 자기 맘대로 잡아서 너무 화났어요."
                     placeholderTextColor="#999"
                     value={situation}
                     onChangeText={setSituation}
@@ -545,7 +651,7 @@ export default function CompatibilityScreen() {
                 {adviceResult && (
                   <View style={[styles.card, styles.adviceCard]}>
                     <View style={styles.cardHeader}>
-                      <Ionicons name="chatbubbles" size={20} color="#FF6B6B" />
+                      <Ionicons name="chatbubble-ellipses" size={20} color="#FF6B6B" />
                       <Text style={styles.cardTitle}>AI 조언</Text>
                     </View>
                     <Text style={styles.cardText}>{adviceResult}</Text>
@@ -579,19 +685,18 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 16,
     alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
   },
   activeTab: {
+    borderBottomWidth: 2,
     borderBottomColor: '#FF6B6B',
   },
   tabText: {
     fontSize: 16,
     color: '#999',
-    fontWeight: '600',
   },
   activeTabText: {
     color: '#FF6B6B',
+    fontWeight: 'bold',
   },
   content: {
     flex: 1,
@@ -600,76 +705,74 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    textAlign: 'center',
-    marginTop: 20,
     color: '#FF6B6B',
+    textAlign: 'center',
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
+    color: '#999',
     textAlign: 'center',
-    marginBottom: 30,
-    color: '#666',
+    marginBottom: 8,
   },
-  section: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 20,
+  dailyUsageText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
     marginBottom: 20,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    color: '#333',
+  section: {
+    marginBottom: 24,
   },
-  helperText: {
-    fontSize: 13,
-    color: '#666',
-    lineHeight: 20,
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
     marginBottom: 12,
-    backgroundColor: '#FFF9E6',
-    padding: 12,
-    borderRadius: 8,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
-    fontSize: 16,
     backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#eee',
+    marginBottom: 12,
   },
   textArea: {
-    height: 120,
+    minHeight: 150,
     textAlignVertical: 'top',
   },
-  dateButton: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
+  datePickerButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#eee',
+    marginBottom: 12,
   },
-  dateButtonText: {
+  datePickerText: {
     fontSize: 16,
     color: '#333',
   },
   genderContainer: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
   },
   genderButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
     borderWidth: 2,
     borderColor: '#FF6B6B',
-    borderRadius: 10,
-    padding: 15,
-    gap: 8,
   },
   genderButtonActive: {
     backgroundColor: '#FF6B6B',
@@ -688,7 +791,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     padding: 18,
     alignItems: 'center',
-    marginBottom: 20,
+    marginTop: 10,
   },
   analyzeButtonText: {
     color: '#fff',
@@ -702,8 +805,8 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 30,
     color: '#FF6B6B',
+    marginBottom: 4,
   },
   percentageCircle: {
     width: 120,
@@ -801,6 +904,12 @@ const styles = StyleSheet.create({
   },
   partnerChipTextActive: {
     color: '#fff',
+  },
+  helperText: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 12,
+    lineHeight: 20,
   },
   exampleTitle: {
     fontSize: 14,

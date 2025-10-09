@@ -19,6 +19,9 @@ import {
   setupNotificationListener 
 } from './services/notificationService';
 
+// 🎯 광고 초기화
+import { initializeAds } from './services/adsConfig';
+
 // 화면 컴포넌트들 임포트
 import AuthScreen from './screens/AuthScreen';
 import LoginScreen from './screens/LoginScreen';
@@ -75,10 +78,6 @@ function MainTabs() {
           height: 60,
           paddingBottom: 8,
           paddingTop: 8,
-        },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
         },
         headerShown: false,
       })}
@@ -186,6 +185,11 @@ function AuthStack() {
 function AppNavigator() {
   const { user, loading } = useAuth();
   const navigationRef = useRef();
+
+  // 🎯 광고 초기화 (앱 시작 시 한 번만)
+  useEffect(() => {
+    initializeAds();
+  }, []);
 
   // 🔔 푸시 알림 초기화
   useEffect(() => {

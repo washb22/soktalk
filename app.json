@@ -11,6 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.wkrgud.soktalk",
@@ -22,22 +25,18 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.wkrgud.soktalk",
-      "googleServicesFile": "./google-services.json",
-      "permissions": [
-        "android.permission.POST_NOTIFICATIONS"
-      ]
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "@react-native-google-signin/google-signin",
+      "expo-notifications",
       [
-        "expo-notifications",
+        "react-native-google-mobile-ads",
         {
-          "icon": "./assets/icon.png",
-          "color": "#ffffff",
-          "sounds": []
+          "androidAppId": "ca-app-pub-3077862428685229~2644415254",
+          "iosAppId": "ca-app-pub-3077862428685229~2644415254"
         }
       ]
     ],
