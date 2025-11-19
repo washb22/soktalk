@@ -25,15 +25,17 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.wkrgud.soktalk",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "config": {
+        "googleMobileAdsAppId": "ca-app-pub-3077862428685229~2644415254"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-notifications",
       [
-        "react-native-google-mobile-ads",
+        "expo-ads-admob",
         {
           "androidAppId": "ca-app-pub-3077862428685229~2644415254",
           "iosAppId": "ca-app-pub-3077862428685229~2644415254"
