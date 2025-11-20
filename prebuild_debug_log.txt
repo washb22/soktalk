@@ -1,0 +1,39 @@
+2025-11-20T06:38:05.033Z expo:telemetry:detachedClient Event received: action
+2025-11-20T06:38:05.140Z expo:env No environment variables loaded from .env files.
+Warning! Your git working tree is dirty.
+It's recommended to commit all your changes before proceeding, so you can revert the changes made by this command if necessary.
+Git status is dirty but the command will continue because the terminal is not interactive.
+- Clearing android
+√ Cleared android code
+Error resolving plugin "react-native-google-mobile-ads"
+SyntaxError: Unexpected token 'typeof'
+    at compileSourceTextModule (node:internal/modules/esm/utils:338:16)
+    at ModuleLoader.importSyncForRequire (node:internal/modules/esm/loader:353:18)
+    at loadESMFromCJS (node:internal/modules/cjs/loader:1385:24)
+    at Module._compile (node:internal/modules/cjs/loader:1536:5)
+    at Object..js (node:internal/modules/cjs/loader:1706:10)
+    at Module.load (node:internal/modules/cjs/loader:1289:32)
+    at Function._load (node:internal/modules/cjs/loader:1108:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+    at Module.require (node:internal/modules/cjs/loader:1311:12) {
+  name: 'PluginError',
+  isPluginError: true,
+  code: 'INVALID_PLUGIN_IMPORT',
+  cause: undefined
+}
+
+
+CommandError: Package "react-native-google-mobile-ads" does not contain a valid config plugin.
+Learn more: https://docs.expo.dev/guides/config-plugins/#creating-a-plugin
+
+Unexpected token 'typeof'
+
+CommandError: Package "react-native-google-mobile-ads" does not contain a valid config plugin.
+Learn more: https://docs.expo.dev/guides/config-plugins/#creating-a-plugin
+
+Unexpected token 'typeof'
+
+    at ensureConfigExistsAsync (C:\soktalk\node_modules\@expo\cli\build\src\prebuild\ensureConfigAsync.js:102:15)
+    at ensureConfigAsync (C:\soktalk\node_modules\@expo\cli\build\src\prebuild\ensureConfigAsync.js:106:11)
+    at prebuildAsync (C:\soktalk\node_modules\@expo\cli\build\src\prebuild\prebuildAsync.js:94:75)
