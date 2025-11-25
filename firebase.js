@@ -1,27 +1,30 @@
-// firebase.js
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initializeApp } from "firebase/app";
+// 1. getAuth 대신 initializeAuth, getReactNativePersistence 추가
+import { initializeAuth, getReactNativePersistence, getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+// 2. AsyncStorage 임포트 (이게 없으면 에러 남!)
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
+// 작형님의 Firebase 설정 (기존 것 그대로 두시면 됩니다)
 const firebaseConfig = {
-  apiKey: "AIzaSyCjaY7osEpwz5Ehu7WI0fqEHkxfx6nR4H0",
-  authDomain: "soktalk-3e359.firebaseapp.com",
-  projectId: "soktalk-3e359",
-  storageBucket: "soktalk-3e359.firebasestorage.app",
-  messagingSenderId: "671138886263",
-  appId: "1:671138886263:web:ba2ca48eb7d18e0f2fcc72",
-  measurementId: "G-X22QMH14VP"
+  apiKey: "AIzaSy...", // 기존 키 유지
+  authDomain: "...",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "...",
+  measurementId: "..."
 };
 
-// 이미 초기화된 앱이 있으면 재사용, 없으면 새로 초기화
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+// 앱 초기화
+const app = initializeApp(firebaseConfig);
 
-// Auth 초기화 (AsyncStorage persistence 추가)
-export const auth = initializeAuth(app, {
+// 🚨 여기가 핵심 수정 포인트! 🚨
+// const auth = getAuth(app);  <-- (X) 웹 방식이라 에러 남
+const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage)
 });
 
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+const db = getFirestore(app);
+
+export { auth, db };

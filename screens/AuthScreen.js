@@ -17,6 +17,7 @@ export default function AuthScreen({ navigation }) {
   useEffect(() => {
     // Google Sign-In 설정
     GoogleSignin.configure({
+      // ✅ 여기가 수정되었습니다 (Web Client ID 적용)
       webClientId: '671138886263-ibtsvptfbe2co6fup7skhuoumhfs2dba.apps.googleusercontent.com',
       offlineAccess: true,
     });
