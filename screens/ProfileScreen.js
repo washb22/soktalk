@@ -63,7 +63,7 @@ export default function ProfileScreen({ navigation }) {
 
       const likedQuery = query(
         collection(db, 'posts'),
-        where('likes', 'array-contains', user.uid)
+        where('likesArray', 'array-contains', user.uid)
       );
       const likedSnapshot = await getDocs(likedQuery);
       const likesCount = likedSnapshot.size;

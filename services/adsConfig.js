@@ -37,12 +37,12 @@ export const AD_UNITS = {
   // 궁합분석 전면 광고
   INTERSTITIAL_COMPATIBILITY: Platform.select({
     android: 'ca-app-pub-3077862428685229/9208580336',
-    ios: 'ca-app-pub-3077862428685229/2804197350',
+    ios: 'ca-app-pub-3077862428685229/7723791045',
   }),
   
   // 조언 전면 광고
   INTERSTITIAL_ADVICE: Platform.select({
     android: 'ca-app-pub-3077862428685229/3245807216',
-    ios: 'ca-app-pub-3077862428685229/7723791045',
+    ios: 'ca-app-pub-3077862428685229/1653206711',
   }),
 };
