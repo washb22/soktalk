@@ -2,7 +2,7 @@
   "expo": {
     "name": "마음다락방",
     "slug": "soktalk",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,11 +15,15 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.wkrgud.soktalk",
+      "buildNumber": "1",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSUserTrackingUsageDescription": "맞춤형 광고를 제공하기 위해 사용자 활동을 추적합니다.",
+        "CFBundleLocalizations": ["ko"],
+        "CFBundleDevelopmentRegion": "ko"
       }
     },
     "android": {
@@ -38,11 +42,9 @@
         "expo-build-properties",
         {
           "android": {
-            "kotlinVersion": "1.9.23",
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
-            "buildToolsVersion": "35.0.0",
-            "ndkVersion": "27.1.12297006"
+            "buildToolsVersion": "35.0.0"
           }
         }
       ],

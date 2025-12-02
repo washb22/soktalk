@@ -73,7 +73,7 @@ export default function LoginScreen({ navigation }) {
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.logo}>속마음톡</Text>
+          <Text style={styles.logo}>마음다락방</Text>
           <Text style={styles.subtitle}>이메일로 로그인하세요</Text>
 
           <View style={styles.inputGroup}>
