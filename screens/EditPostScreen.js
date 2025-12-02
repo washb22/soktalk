@@ -27,24 +27,32 @@ export default function EditPostScreen({ route, navigation }) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [imageUri, setImageUri] = useState(post.imageUrl || null);
     const [imageChanged, setImageChanged] = useState(false);
+    const [imageAspectRatio, setImageAspectRatio] = useState(4/3);
 
     const pickImage = async () => {
-        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        
-        if (permissionResult.granted === false) {
-            Alert.alert('알림', '사진 라이브러리 접근 권한이 필요합니다.');
-            return;
-        }
+        try {
+            const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            
+            if (permissionResult.granted === false) {
+                Alert.alert('알림', '사진 라이브러리 접근 권한이 필요합니다.');
+                return;
+            }
 
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            quality: 0.8,
-          });
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsEditing: false,
+                quality: 0.8,
+            });
 
-        if (!result.canceled) {
-            setImageUri(result.assets[0].uri);
-            setImageChanged(true);
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const asset = result.assets[0];
+                setImageUri(asset.uri);
+                setImageChanged(true);
+                setImageAspectRatio(asset.width / asset.height);
+            }
+        } catch (error) {
+            console.error('이미지 선택 에러:', error);
+            Alert.alert('오류', '이미지를 선택하는 중 문제가 발생했습니다.');
         }
     };
 
@@ -198,7 +206,13 @@ export default function EditPostScreen({ route, navigation }) {
                     {/* 선택된 이미지 미리보기 */}
                     {imageUri && (
                         <View style={styles.imagePreviewContainer}>
-                            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+                            <Image 
+                                source={{ uri: imageUri }} 
+                                style={[
+                                    styles.imagePreview,
+                                    { aspectRatio: imageAspectRatio }
+                                ]} 
+                            />
                             <TouchableOpacity
                                 style={styles.removeImageButton}
                                 onPress={removeImage}
@@ -337,7 +351,7 @@ const styles = StyleSheet.create({
     },
     imagePreview: {
         width: '100%',
-        height: 200,
+        height: undefined,
         borderRadius: 12,
     },
     removeImageButton: {

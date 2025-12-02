@@ -4,8 +4,11 @@ import { requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
 
 export const initializeAds = async () => {
   try {
-    // iOS ATT 권한 요청
+    // iOS ATT 권한 요청 (딜레이 추가!)
     if (Platform.OS === 'ios') {
+      // 앱이 완전히 로드된 후 ATT 팝업 표시 (1.5초 딜레이)
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
       const { status } = await requestTrackingPermissionsAsync();
       console.log('ATT 권한 상태:', status);
     }

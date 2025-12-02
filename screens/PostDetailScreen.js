@@ -179,8 +179,9 @@ export default function PostDetailScreen({ route, navigation }) {
         });
         setIsLiked(true);
         
-        if (postData.userId && postData.userId !== user.uid) {
-          await sendLikeNotification(postData.userId, postData.title, user.displayName || '익명');
+        // authorId로 변경!
+        if (postData.authorId && postData.authorId !== user.uid) {
+          await sendLikeNotification(postData.authorId, postData.title, user.displayName || '익명');
         }
       }
       
@@ -211,9 +212,10 @@ export default function PostDetailScreen({ route, navigation }) {
       
       await addDoc(commentsRef, newComment);
       
-      if (postData.userId && postData.userId !== user.uid) {
+      // authorId로 변경!
+      if (postData.authorId && postData.authorId !== user.uid) {
         await sendCommentNotification(
-          postData.userId, 
+          postData.authorId, 
           postData.title, 
           isAnonymousComment ? '익명' : (user.displayName || '익명'),
           comment
@@ -365,7 +367,8 @@ export default function PostDetailScreen({ route, navigation }) {
     );
   }
 
-  const isPostAuthor = postData.userId === user.uid;
+  // authorId로 변경!
+  const isPostAuthor = postData.authorId === user.uid;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -386,7 +389,8 @@ export default function PostDetailScreen({ route, navigation }) {
             />
           </TouchableOpacity>
           
-          {postData.userId === user.uid && (
+          {/* authorId로 변경! */}
+          {postData.authorId === user.uid && (
             <>
               <TouchableOpacity
                 style={styles.headerButton}
@@ -445,7 +449,8 @@ export default function PostDetailScreen({ route, navigation }) {
                 </Text>
               </TouchableOpacity>
 
-              {postData.userId !== user.uid && (
+              {/* authorId로 변경! */}
+              {postData.authorId !== user.uid && (
                 <TouchableOpacity
                   style={styles.reportButton}
                   onPress={() => handleReport({ type: 'post', id: post.id, content: postData.title })}

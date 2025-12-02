@@ -30,6 +30,7 @@ export default function WritePostScreen({ route, navigation }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imageUri, setImageUri] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [imageAspectRatio, setImageAspectRatio] = useState(1);
 
   const pickImage = async () => {
     try {
@@ -42,13 +43,14 @@ export default function WritePostScreen({ route, navigation }) {
   
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        // aspect 제거! → 사용자가 자유롭게 비율 조정
+        allowsEditing: false,
         quality: 0.8,
       });
   
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setImageUri(result.assets[0].uri);
+        const asset = result.assets[0];
+        setImageUri(asset.uri);
+        setImageAspectRatio(asset.width / asset.height);
       }
     } catch (error) {
       console.error('이미지 선택 에러:', error);
@@ -80,7 +82,6 @@ export default function WritePostScreen({ route, navigation }) {
     try {
       let imageUrl = null;
       
-      // 이미지가 있으면 업로드
       if (imageUri) {
         imageUrl = await uploadImage(imageUri, 'posts');
       }
@@ -96,7 +97,7 @@ export default function WritePostScreen({ route, navigation }) {
         likes: 0,
         likesArray: [],
         commentsCount: 0,
-        imageUrl: imageUrl, // 이미지 URL 추가
+        imageUrl: imageUrl,
         createdAt: serverTimestamp(),
       };
 
@@ -236,7 +237,13 @@ export default function WritePostScreen({ route, navigation }) {
           {/* 선택된 이미지 미리보기 */}
           {imageUri && (
             <View style={styles.imagePreviewContainer}>
-              <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+              <Image 
+                source={{ uri: imageUri }} 
+                style={[
+                  styles.imagePreview,
+                  { aspectRatio: imageAspectRatio }
+                ]} 
+              />
               <TouchableOpacity
                 style={styles.removeImageButton}
                 onPress={removeImage}
@@ -414,7 +421,7 @@ const styles = StyleSheet.create({
   },
   imagePreview: {
     width: '100%',
-    height: 200,
+    height: undefined,
     borderRadius: 12,
   },
   removeImageButton: {
