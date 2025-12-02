@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "671138886263-1bfii54ha7kh78hq1okltv5pi7cekrah.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wkrgud.soktalk",
+            "certificate_hash": "647e4753001e0ceea53f8ca348d3cebd5d748d32"
+          }
+        },
+        {
           "client_id": "671138886263-60gkdihchvvf7vd1rlmurh7ptvuaus07.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

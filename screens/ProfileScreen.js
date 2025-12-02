@@ -10,10 +10,11 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { 
   collection, 
   query, 
@@ -22,9 +23,12 @@ import {
   getDocs, 
   doc, 
   getDoc,
-  updateDoc 
+  updateDoc,
+  deleteDoc,
+  writeBatch,
 } from 'firebase/firestore';
-import { updateProfile } from 'firebase/auth';
+import { updateProfile, deleteUser, reauthenticateWithCredential, GoogleAuthProvider } from 'firebase/auth';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 export default function ProfileScreen({ navigation }) {
   const { user, logout } = useAuth();
@@ -44,6 +48,7 @@ export default function ProfileScreen({ navigation }) {
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [newNickname, setNewNickname] = useState('');
   const [updatingNickname, setUpdatingNickname] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -209,6 +214,152 @@ export default function ProfileScreen({ navigation }) {
       },
     ]);
   };
+
+  // 회원 탈퇴 처리
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      '회원 탈퇴',
+      '정말 탈퇴하시겠습니까?\n\n탈퇴 시 모든 데이터가 삭제되며 복구할 수 없습니다.\n\n• 작성한 게시글\n• 작성한 댓글\n• 북마크\n• 궁합 분석 기록',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '탈퇴하기',
+          style: 'destructive',
+          onPress: () => confirmDeleteAccount(),
+        },
+      ]
+    );
+  };
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      '최종 확인',
+      '이 작업은 되돌릴 수 없습니다.\n정말 탈퇴하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '네, 탈퇴합니다',
+          style: 'destructive',
+          onPress: () => executeDeleteAccount(),
+        },
+      ]
+    );
+  };
+
+  const executeDeleteAccount = async () => {
+    setDeletingAccount(true);
+    setSettingsModalVisible(false);
+
+    try {
+      const currentUser = auth.currentUser;
+      const userId = currentUser.uid;
+
+      // 1. Firestore 데이터 삭제
+      const batch = writeBatch(db);
+
+      // 사용자 문서 삭제
+      const userDocRef = doc(db, 'users', userId);
+      batch.delete(userDocRef);
+
+      // 사용자가 작성한 게시글 삭제
+      const postsQuery = query(
+        collection(db, 'posts'),
+        where('authorId', '==', userId)
+      );
+      const postsSnapshot = await getDocs(postsQuery);
+      postsSnapshot.docs.forEach((docSnap) => {
+        batch.delete(docSnap.ref);
+      });
+
+      // 사용자가 작성한 댓글 삭제
+      const commentsQuery = query(
+        collection(db, 'comments'),
+        where('authorId', '==', userId)
+      );
+      const commentsSnapshot = await getDocs(commentsQuery);
+      commentsSnapshot.docs.forEach((docSnap) => {
+        batch.delete(docSnap.ref);
+      });
+
+      // 사용자의 북마크 삭제
+      const bookmarksQuery = query(
+        collection(db, 'bookmarks'),
+        where('userId', '==', userId)
+      );
+      const bookmarksSnapshot = await getDocs(bookmarksQuery);
+      bookmarksSnapshot.docs.forEach((docSnap) => {
+        batch.delete(docSnap.ref);
+      });
+
+      // 배치 실행
+      await batch.commit();
+
+      // 궁합 기록 삭제 (서브컬렉션은 별도 처리)
+      const compatibilityRef = collection(db, 'users', userId, 'compatibilityHistory');
+      const compatibilitySnapshot = await getDocs(compatibilityRef);
+      const deletePromises = compatibilitySnapshot.docs.map((docSnap) => 
+        deleteDoc(docSnap.ref)
+      );
+      await Promise.all(deletePromises);
+
+      // 2. Google 로그인 사용자인 경우 재인증
+      const providerData = currentUser.providerData;
+      const isGoogleUser = providerData.some(
+        (provider) => provider.providerId === 'google.com'
+      );
+
+      if (isGoogleUser) {
+        try {
+          // Google 재로그인으로 credential 획득
+          await GoogleSignin.hasPlayServices();
+          const userInfo = await GoogleSignin.signIn();
+          const { idToken } = userInfo;
+          const googleCredential = GoogleAuthProvider.credential(idToken);
+          
+          // 재인증
+          await reauthenticateWithCredential(currentUser, googleCredential);
+        } catch (reauthError) {
+          console.log('재인증 스킵:', reauthError);
+          // 재인증 실패해도 계속 진행 시도
+        }
+      }
+
+      // 3. Firebase Auth에서 사용자 삭제
+      await deleteUser(currentUser);
+
+      Alert.alert(
+        '탈퇴 완료',
+        '회원 탈퇴가 완료되었습니다.\n그동안 이용해 주셔서 감사합니다.',
+        [{ text: '확인' }]
+      );
+
+    } catch (error) {
+      console.error('회원 탈퇴 에러:', error);
+      
+      if (error.code === 'auth/requires-recent-login') {
+        Alert.alert(
+          '재로그인 필요',
+          '보안을 위해 다시 로그인한 후 탈퇴를 진행해 주세요.',
+          [
+            { text: '취소', style: 'cancel' },
+            {
+              text: '로그아웃',
+              onPress: async () => {
+                await logout();
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          '오류',
+          '회원 탈퇴 중 오류가 발생했습니다.\n잠시 후 다시 시도해 주세요.'
+        );
+      }
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
   
   const renderCompatibilityItem = ({ item }) => {
     const createdDate = item.createdAt?.toDate ? 
@@ -343,6 +494,17 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  // 탈퇴 진행 중 로딩 화면
+  if (deletingAccount) {
+    return (
+      <View style={styles.deletingContainer}>
+        <ActivityIndicator size="large" color="#FF6B6B" />
+        <Text style={styles.deletingText}>회원 탈퇴 처리 중...</Text>
+        <Text style={styles.deletingSubText}>잠시만 기다려 주세요.</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.profileSection}>
@@ -460,7 +622,7 @@ export default function ProfileScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.settingsItems}>
+            <ScrollView style={styles.settingsItems}>
               {/* 약관 및 정책 */}
               <View style={styles.settingsSection}>
                 <Text style={styles.settingsSectionTitle}>약관 및 정책</Text>
@@ -490,6 +652,41 @@ export default function ProfileScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
 
+              {/* 고객센터 */}
+              <View style={styles.settingsSection}>
+                <Text style={styles.settingsSectionTitle}>고객센터</Text>
+                
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={() => {
+                    Alert.alert(
+                      '문의하기',
+                      '이메일: sbro@sbrother.co.kr\n\n부적절한 콘텐츠 신고, 서비스 문의 등\n위 이메일로 연락해 주세요.\n\n운영시간: 평일 10:00 - 18:00',
+                      [{ text: '확인' }]
+                    );
+                  }}
+                >
+                  <Ionicons name="mail-outline" size={20} color="#666" />
+                  <Text style={styles.settingsItemText}>문의하기</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={() => {
+                    Alert.alert(
+                      '신고 안내',
+                      '부적절한 콘텐츠나 사용자를 발견하셨나요?\n\n1. 게시글/댓글의 메뉴(⋯)에서 신고하기\n2. 이메일로 상세 내용 신고\n   sbro@sbrother.co.kr\n\n신고 접수 후 24시간 내 검토됩니다.',
+                      [{ text: '확인' }]
+                    );
+                  }}
+                >
+                  <Ionicons name="warning-outline" size={20} color="#666" />
+                  <Text style={styles.settingsItemText}>신고 안내</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </TouchableOpacity>
+              </View>
+
               {/* 계정 */}
               <View style={styles.settingsSection}>
                 <Text style={styles.settingsSectionTitle}>계정</Text>
@@ -505,6 +702,18 @@ export default function ProfileScreen({ navigation }) {
                   <Text style={[styles.settingsItemText, { color: '#FF6B6B' }]}>로그아웃</Text>
                   <Ionicons name="chevron-forward" size={20} color="#ccc" />
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={() => {
+                    setSettingsModalVisible(false);
+                    handleDeleteAccount();
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={20} color="#999" />
+                  <Text style={[styles.settingsItemText, { color: '#999' }]}>회원 탈퇴</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </TouchableOpacity>
               </View>
 
               {/* 앱 정보 */}
@@ -514,10 +723,10 @@ export default function ProfileScreen({ navigation }) {
                 <View style={styles.settingsItem}>
                   <Ionicons name="information-circle-outline" size={20} color="#666" />
                   <Text style={styles.settingsItemText}>버전</Text>
-                  <Text style={styles.versionText}>1.0.0</Text>
+                  <Text style={styles.versionText}>1.0.1</Text>
                 </View>
               </View>
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -561,6 +770,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  deletingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  deletingText: {
+    marginTop: 20,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  deletingSubText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#999',
   },
   profileSection: {
     backgroundColor: '#fff',

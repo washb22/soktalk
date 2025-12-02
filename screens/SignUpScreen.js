@@ -197,7 +197,7 @@ export default function SignUpScreen({ navigation }) {
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           <Text style={styles.description}>
-            속마음톡에 오신 것을 환영합니다!{'\n'}
+            마음다락방에 오신 것을 환영합니다!{'\n'}
             회원가입 후 자유롭게 고민을 나눠보세요.
           </Text>
 

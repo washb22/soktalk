@@ -102,7 +102,7 @@ export default function AuthScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <View style={styles.loginContainer}>
-        <Text style={styles.logo}>속마음톡</Text>
+        <Text style={styles.logo}>마음다락방</Text>
         <Text style={styles.tagline}>연애 고민, 이제 혼자 하지 마세요</Text>
 
         <TouchableOpacity 
