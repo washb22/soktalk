@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { db } from '../firebase';
 import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
+import { useAuth } from '../contexts/AuthContext';
 
 const formatTimeAgo = (date) => {
   if (!date) return '방금 전';
@@ -75,10 +76,16 @@ const calculatePopularityScore = (post) => {
 
 export default function HomeScreen({ navigation, route, category }) {
   const nav = useNavigation();
+  const { user } = useAuth();
   const [posts, setPosts] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [blockedUserIds, setBlockedUserIds] = useState([]);
+
+  useEffect(() => {
+    loadBlockedUsers();
+  }, [user]);
 
   useEffect(() => {
     if (route?.params?.refresh) {
@@ -90,7 +97,22 @@ export default function HomeScreen({ navigation, route, category }) {
   useEffect(() => {
     setCurrentPage(1);
     fetchPosts(1);
-  }, [category]);
+  }, [category, blockedUserIds]);
+
+  // 차단된 사용자 목록 불러오기
+  const loadBlockedUsers = async () => {
+    if (!user) return;
+    
+    try {
+      const blockedRef = collection(db, 'users', user.uid, 'blockedUsers');
+      const snapshot = await getDocs(blockedRef);
+      
+      const blockedIds = snapshot.docs.map(doc => doc.id);
+      setBlockedUserIds(blockedIds);
+    } catch (error) {
+      console.error('차단 목록 로드 에러:', error);
+    }
+  };
 
   const fetchPosts = async (page = 1) => {
     try {
@@ -103,7 +125,7 @@ export default function HomeScreen({ navigation, route, category }) {
           postsRef, 
           where('category', '==', category),
           orderBy('createdAt', 'desc'),
-          limit(15)
+          limit(50) // 필터링을 위해 더 많이 가져옴
         );
       } else {
         // 🔥 인기글: 모든 게시글을 가져와서 점수 계산 후 정렬
@@ -142,6 +164,7 @@ export default function HomeScreen({ navigation, route, category }) {
           title: String(data.title || '제목 없음'),
           content: String(data.content || ''),
           author: String(data.author || '익명'),
+          authorId: data.authorId || null,
           views: Number(data.views || 0),
           likes: Number(data.likes || 0),
           comments: Number(data.commentsCount || 0),
@@ -150,6 +173,11 @@ export default function HomeScreen({ navigation, route, category }) {
           createdAtFormatted: String(createdAtFormatted),
         };
       });
+      
+      // 🚫 차단된 사용자 게시글 필터링
+      if (blockedUserIds.length > 0) {
+        postsData = postsData.filter(post => !blockedUserIds.includes(post.authorId));
+      }
       
       // 🔥 인기글인 경우 점수 계산 후 정렬
       if (!category) {
@@ -160,6 +188,9 @@ export default function HomeScreen({ navigation, route, category }) {
           }))
           .sort((a, b) => b.popularityScore - a.popularityScore)
           .slice(0, 15); // 상위 15개만 표시
+      } else {
+        // 카테고리별은 최신순으로 15개
+        postsData = postsData.slice(0, 15);
       }
       
       // 최종 데이터 준비
@@ -168,6 +199,7 @@ export default function HomeScreen({ navigation, route, category }) {
         title: String(post.title),
         content: String(post.content),
         author: String(post.author),
+        authorId: post.authorId,
         views: Number(post.views),
         likes: Number(post.likes),
         comments: Number(post.comments),
@@ -187,6 +219,7 @@ export default function HomeScreen({ navigation, route, category }) {
   const onRefresh = async () => {
     setRefreshing(true);
     setCurrentPage(1);
+    await loadBlockedUsers(); // 차단 목록도 새로고침
     await fetchPosts(1);
     setRefreshing(false);
   };

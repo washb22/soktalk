@@ -1,26 +1,39 @@
 // screens/AuthScreen.js
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebase';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { 
+  GoogleAuthProvider, 
+  signInWithCredential,
+  OAuthProvider,
+} from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 
 export default function AuthScreen({ navigation }) {
+  const [appleAuthAvailable, setAppleAuthAvailable] = useState(false);
+
   useEffect(() => {
     // Google Sign-In 설정
     GoogleSignin.configure({
-      // ✅ 여기가 수정되었습니다 (Web Client ID 적용)
       webClientId: '671138886263-ibtsvptfbe2co6fup7skhuoumhfs2dba.apps.googleusercontent.com',
       offlineAccess: true,
     });
+
+    // Apple 로그인 가능 여부 확인 (iOS만)
+    if (Platform.OS === 'ios') {
+      AppleAuthentication.isAvailableAsync().then(setAppleAuthAvailable);
+    }
   }, []);
 
   const handleGoogleLogin = async () => {
@@ -53,6 +66,7 @@ export default function AuthScreen({ navigation }) {
         // 신규 사용자인 경우 기본 정보 저장
         await setDoc(userDocRef, {
           email: user.email,
+          displayName: user.displayName || user.email.split('@')[0],
           nickname: user.displayName || user.email.split('@')[0],
           profileImage: user.photoURL,
           provider: 'google',
@@ -95,8 +109,96 @@ export default function AuthScreen({ navigation }) {
     }
   };
 
-  const handleKakaoLogin = () => {
-    Alert.alert('알림', '카카오 로그인은 준비 중입니다.');
+  // Apple 로그인 처리
+  const handleAppleLogin = async () => {
+    try {
+      console.log('Apple 로그인 시작');
+      
+      // nonce 생성 (보안용)
+      const nonce = Math.random().toString(36).substring(2, 10);
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        nonce
+      );
+      
+      // Apple 로그인 실행
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce: hashedNonce,
+      });
+      
+      console.log('Apple 로그인 성공:', credential);
+      
+      // Firebase 인증
+      const provider = new OAuthProvider('apple.com');
+      const oAuthCredential = provider.credential({
+        idToken: credential.identityToken,
+        rawNonce: nonce,
+      });
+      
+      const result = await signInWithCredential(auth, oAuthCredential);
+      const user = result.user;
+      
+      console.log('Firebase Apple 로그인 성공:', user.uid);
+      
+      // Firestore에서 사용자 정보 확인
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        // Apple은 이름을 첫 로그인 때만 제공
+        const fullName = credential.fullName;
+        let displayName = '사용자';
+        
+        if (fullName) {
+          const givenName = fullName.givenName || '';
+          const familyName = fullName.familyName || '';
+          displayName = `${familyName}${givenName}`.trim() || '사용자';
+        }
+        
+        // 신규 사용자인 경우 기본 정보 저장
+        await setDoc(userDocRef, {
+          email: credential.email || user.email || '',
+          displayName: displayName,
+          nickname: displayName,
+          profileImage: null,
+          provider: 'apple',
+          createdAt: serverTimestamp(),
+          gender: '',
+          birthYear: 0,
+          introduction: '',
+          currentSituation: '',
+          visitCount: 1,
+        });
+        
+        console.log('신규 Apple 사용자 등록 완료');
+        
+        Alert.alert(
+          '환영합니다!',
+          'Apple 계정으로 가입되었습니다.',
+          [{ text: '확인' }]
+        );
+      } else {
+        // 기존 사용자 방문 횟수 증가
+        await setDoc(userDocRef, {
+          visitCount: (userDoc.data().visitCount || 0) + 1,
+          lastVisit: serverTimestamp(),
+        }, { merge: true });
+        
+        console.log('기존 Apple 사용자 로그인 완료');
+      }
+    } catch (error) {
+      console.error('Apple 로그인 에러:', error);
+      
+      if (error.code === 'ERR_REQUEST_CANCELED') {
+        console.log('사용자가 Apple 로그인을 취소했습니다');
+      } else {
+        Alert.alert('오류', 'Apple 로그인에 실패했습니다');
+      }
+    }
   };
 
   return (
@@ -105,22 +207,25 @@ export default function AuthScreen({ navigation }) {
         <Text style={styles.logo}>마음다락방</Text>
         <Text style={styles.tagline}>연애 고민, 이제 혼자 하지 마세요</Text>
 
+        {/* Apple 로그인 버튼 (iOS만 표시) */}
+        {Platform.OS === 'ios' && appleAuthAvailable && (
+          <TouchableOpacity 
+            style={[styles.socialButton, styles.appleButton]} 
+            onPress={handleAppleLogin}
+          >
+            <Ionicons name="logo-apple" size={24} color="#FFFFFF" />
+            <Text style={[styles.socialButtonText, styles.appleButtonText]}>
+              Apple로 시작하기
+            </Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity 
           style={[styles.socialButton, styles.googleButton]} 
           onPress={handleGoogleLogin}
         >
           <Ionicons name="logo-google" size={24} color="#DB4437" />
           <Text style={styles.socialButtonText}>구글로 시작하기</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.socialButton, styles.kakaoButton]} 
-          onPress={handleKakaoLogin}
-        >
-          <Ionicons name="chatbubble" size={24} color="#3C1E1E" />
-          <Text style={[styles.socialButtonText, styles.kakaoButtonText]}>
-            카카오로 시작하기
-          </Text>
         </TouchableOpacity>
 
         <View style={styles.divider}>
@@ -184,23 +289,22 @@ const styles = StyleSheet.create({
     width: '85%',
     elevation: 3,
   },
+  appleButton: {
+    backgroundColor: '#000000',
+  },
+  appleButtonText: {
+    color: '#FFFFFF',
+  },
   googleButton: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E0E0E0',
   },
-  kakaoButton: {
-    backgroundColor: '#FEE500',
-    borderWidth: 0,
-  },
   socialButtonText: {
     fontSize: 16,
     marginLeft: 10,
     color: '#333',
-    fontWeight: '500',
-  },
-  kakaoButtonText: {
-    color: '#3C1E1E',
+    fontWeight: 'bold',
   },
   divider: {
     flexDirection: 'row',

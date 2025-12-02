@@ -29,6 +29,7 @@ import {
   orderBy,
   deleteDoc,
   setDoc,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { sendCommentNotification, sendLikeNotification } from '../services/notificationService';
 import ReportModal from '../components/ReportModal';
@@ -333,6 +334,89 @@ export default function PostDetailScreen({ route, navigation }) {
     setReportModalVisible(true);
   };
 
+  // 사용자 차단 처리
+  const handleBlockUser = () => {
+    if (!postData.authorId || postData.authorId === user.uid) {
+      return;
+    }
+
+    const authorName = postData.isAnonymous ? '익명' : (postData.author || '알 수 없음');
+
+    Alert.alert(
+      '사용자 차단',
+      `${authorName}님을 차단하시겠습니까?\n\n차단하면 이 사용자의 게시글과 댓글이 더 이상 표시되지 않습니다.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '차단',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const blockedRef = doc(db, 'users', user.uid, 'blockedUsers', postData.authorId);
+              await setDoc(blockedRef, {
+                blockedUserName: authorName,
+                blockedAt: serverTimestamp(),
+              });
+              
+              Alert.alert(
+                '차단 완료',
+                `${authorName}님을 차단했습니다.\n\n설정 > 차단 목록에서 해제할 수 있습니다.`,
+                [
+                  {
+                    text: '확인',
+                    onPress: () => navigation.goBack(),
+                  },
+                ]
+              );
+            } catch (error) {
+              console.error('차단 에러:', error);
+              Alert.alert('오류', '차단 처리 중 오류가 발생했습니다.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // 댓글 작성자 차단
+  const handleBlockCommentUser = (commentUserId, commentUserName) => {
+    if (!commentUserId || commentUserId === user.uid) {
+      return;
+    }
+
+    Alert.alert(
+      '사용자 차단',
+      `${commentUserName}님을 차단하시겠습니까?\n\n차단하면 이 사용자의 게시글과 댓글이 더 이상 표시되지 않습니다.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '차단',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const blockedRef = doc(db, 'users', user.uid, 'blockedUsers', commentUserId);
+              await setDoc(blockedRef, {
+                blockedUserName: commentUserName,
+                blockedAt: serverTimestamp(),
+              });
+              
+              Alert.alert(
+                '차단 완료',
+                `${commentUserName}님을 차단했습니다.\n\n설정 > 차단 목록에서 해제할 수 있습니다.`
+              );
+              
+              // 댓글 목록 새로고침
+              await loadComments();
+            } catch (error) {
+              console.error('차단 에러:', error);
+              Alert.alert('오류', '차단 처리 중 오류가 발생했습니다.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const formatDate = (date) => {
     if (!date) return '';
     
@@ -449,14 +533,24 @@ export default function PostDetailScreen({ route, navigation }) {
                 </Text>
               </TouchableOpacity>
 
-              {/* authorId로 변경! */}
+              {/* authorId로 변경! - 신고 & 차단 버튼 */}
               {postData.authorId !== user.uid && (
-                <TouchableOpacity
-                  style={styles.reportButton}
-                  onPress={() => handleReport({ type: 'post', id: post.id, content: postData.title })}
-                >
-                  <Text style={styles.reportButtonText}>신고</Text>
-                </TouchableOpacity>
+                <View style={styles.actionButtonsRight}>
+                  <TouchableOpacity
+                    style={styles.blockButton}
+                    onPress={handleBlockUser}
+                  >
+                    <Ionicons name="person-remove-outline" size={16} color="#999" />
+                    <Text style={styles.blockButtonText}>차단</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={styles.reportButton}
+                    onPress={() => handleReport({ type: 'post', id: post.id, content: postData.title })}
+                  >
+                    <Text style={styles.reportButtonText}>신고</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           </View>
@@ -519,14 +613,22 @@ export default function PostDetailScreen({ route, navigation }) {
                       </TouchableOpacity>
                     )}
                     
-                    {/* 다른 사람 댓글 신고 버튼 */}
+                    {/* 다른 사람 댓글: 차단 & 신고 버튼 */}
                     {item.userId !== user.uid && (
-                      <TouchableOpacity
-                        style={styles.reportIconButton}
-                        onPress={() => handleReport({ type: 'comment', id: item.id, content: item.text })}
-                      >
-                        <Ionicons name="alert-circle-outline" size={16} color="#999" />
-                      </TouchableOpacity>
+                      <>
+                        <TouchableOpacity
+                          style={styles.blockIconButton}
+                          onPress={() => handleBlockCommentUser(item.userId, getDisplayName(item))}
+                        >
+                          <Ionicons name="person-remove-outline" size={16} color="#999" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.reportIconButton}
+                          onPress={() => handleReport({ type: 'comment', id: item.id, content: item.text })}
+                        >
+                          <Ionicons name="alert-circle-outline" size={16} color="#999" />
+                        </TouchableOpacity>
+                      </>
                     )}
                   </View>
                 </View>
@@ -704,6 +806,7 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#eee',
@@ -718,8 +821,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
+  actionButtonsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  blockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    gap: 4,
+  },
+  blockButtonText: {
+    color: '#999',
+    fontSize: 12,
+  },
   reportButton: {
-    marginLeft: 'auto',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 4,
@@ -807,6 +928,10 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   deleteIconButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  blockIconButton: {
     padding: 4,
     marginLeft: 8,
   },

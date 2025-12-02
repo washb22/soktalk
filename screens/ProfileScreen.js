@@ -46,9 +46,12 @@ export default function ProfileScreen({ navigation }) {
 
   const [nicknameModalVisible, setNicknameModalVisible] = useState(false);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [blockedUsersModalVisible, setBlockedUsersModalVisible] = useState(false);
   const [newNickname, setNewNickname] = useState('');
   const [updatingNickname, setUpdatingNickname] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState([]);
+  const [loadingBlockedUsers, setLoadingBlockedUsers] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -152,6 +155,50 @@ export default function ProfileScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 차단 목록 불러오기
+  const loadBlockedUsers = async () => {
+    setLoadingBlockedUsers(true);
+    try {
+      const blockedRef = collection(db, 'users', user.uid, 'blockedUsers');
+      const snapshot = await getDocs(blockedRef);
+      
+      const blockedData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      
+      setBlockedUsers(blockedData);
+    } catch (error) {
+      console.error('차단 목록 로드 에러:', error);
+    } finally {
+      setLoadingBlockedUsers(false);
+    }
+  };
+
+  // 차단 해제
+  const handleUnblock = async (blockedUserId, blockedUserName) => {
+    Alert.alert(
+      '차단 해제',
+      `${blockedUserName || '이 사용자'}님의 차단을 해제하시겠습니까?`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '해제',
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'users', user.uid, 'blockedUsers', blockedUserId));
+              setBlockedUsers(prev => prev.filter(u => u.id !== blockedUserId));
+              Alert.alert('알림', '차단이 해제되었습니다.');
+            } catch (error) {
+              console.error('차단 해제 에러:', error);
+              Alert.alert('오류', '차단 해제 중 오류가 발생했습니다.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleNicknameChange = async () => {
@@ -301,6 +348,14 @@ export default function ProfileScreen({ navigation }) {
         deleteDoc(docSnap.ref)
       );
       await Promise.all(deletePromises);
+
+      // 차단 목록 삭제
+      const blockedRef = collection(db, 'users', userId, 'blockedUsers');
+      const blockedSnapshot = await getDocs(blockedRef);
+      const deleteBlockedPromises = blockedSnapshot.docs.map((docSnap) => 
+        deleteDoc(docSnap.ref)
+      );
+      await Promise.all(deleteBlockedPromises);
 
       // 2. Google 로그인 사용자인 경우 재인증
       const providerData = currentUser.providerData;
@@ -603,6 +658,66 @@ export default function ProfileScreen({ navigation }) {
         </View>
       </Modal>
 
+      {/* 차단 목록 모달 */}
+      <Modal
+        visible={blockedUsersModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setBlockedUsersModalVisible(false)}
+      >
+        <View style={styles.settingsModalOverlay}>
+          <View style={styles.settingsModalContent}>
+            <View style={styles.settingsHeader}>
+              <Text style={styles.settingsTitle}>차단 목록</Text>
+              <TouchableOpacity
+                onPress={() => setBlockedUsersModalVisible(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            {loadingBlockedUsers ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#FF6B6B" />
+              </View>
+            ) : blockedUsers.length === 0 ? (
+              <View style={styles.emptyBlockedContainer}>
+                <Ionicons name="person-remove-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyBlockedText}>차단한 사용자가 없습니다.</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={blockedUsers}
+                keyExtractor={item => item.id}
+                contentContainerStyle={styles.blockedListContent}
+                renderItem={({ item }) => (
+                  <View style={styles.blockedUserItem}>
+                    <View style={styles.blockedUserInfo}>
+                      <Ionicons name="person-circle-outline" size={40} color="#999" />
+                      <View style={styles.blockedUserText}>
+                        <Text style={styles.blockedUserName}>
+                          {item.blockedUserName || '알 수 없음'}
+                        </Text>
+                        <Text style={styles.blockedDate}>
+                          {item.blockedAt?.toDate?.().toLocaleDateString('ko-KR') || ''}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.unblockButton}
+                      onPress={() => handleUnblock(item.id, item.blockedUserName)}
+                    >
+                      <Text style={styles.unblockButtonText}>해제</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* 설정 모달 */}
       <Modal
         visible={settingsModalVisible}
@@ -683,6 +798,24 @@ export default function ProfileScreen({ navigation }) {
                 >
                   <Ionicons name="warning-outline" size={20} color="#666" />
                   <Text style={styles.settingsItemText}>신고 안내</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </TouchableOpacity>
+              </View>
+
+              {/* 사용자 관리 */}
+              <View style={styles.settingsSection}>
+                <Text style={styles.settingsSectionTitle}>사용자 관리</Text>
+                
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={() => {
+                    setSettingsModalVisible(false);
+                    loadBlockedUsers();
+                    setBlockedUsersModalVisible(true);
+                  }}
+                >
+                  <Ionicons name="person-remove-outline" size={20} color="#666" />
+                  <Text style={styles.settingsItemText}>차단 목록</Text>
                   <Ionicons name="chevron-forward" size={20} color="#ccc" />
                 </TouchableOpacity>
               </View>
@@ -982,6 +1115,59 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 14,
     color: '#999',
+  },
+  // 차단 목록 모달
+  emptyBlockedContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyBlockedText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#999',
+  },
+  blockedListContent: {
+    padding: 20,
+  },
+  blockedUserItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  blockedUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  blockedUserText: {
+    marginLeft: 12,
+  },
+  blockedUserName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  blockedDate: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
+  },
+  unblockButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#FF6B6B',
+    borderRadius: 6,
+  },
+  unblockButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   // 탭
   tabContainer: {
