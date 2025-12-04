@@ -20,20 +20,20 @@ export default function TermsScreen({ navigation }) {
         </View>
 
         <ScrollView style={styles.content}>
-          <Text style={styles.title}>속마음톡 이용약관</Text>
+          <Text style={styles.title}>마음다락방방 이용약관</Text>
           <Text style={styles.date}>시행일: 2025년 1월 1일</Text>
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>제1조 (목적)</Text>
             <Text style={styles.text}>
-              본 약관은 워시비 주식회사(이하 "회사")가 제공하는 속마음톡 서비스(이하 "서비스")의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항, 기타 필요한 사항을 규정함을 목적으로 합니다.
+              본 약관은 워시비 주식회사(이하 "회사")가 제공하는 마음다락방방 서비스(이하 "서비스")의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항, 기타 필요한 사항을 규정함을 목적으로 합니다.
             </Text>
           </View>
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>제2조 (정의)</Text>
             <Text style={styles.text}>
-              1. "서비스"란 회사가 제공하는 모바일 애플리케이션 속마음톡 및 관련 제반 서비스를 의미합니다.{'\n\n'}
+              1. "서비스"란 회사가 제공하는 모바일 애플리케이션 마음다락방방 및 관련 제반 서비스를 의미합니다.{'\n\n'}
               2. "회원"이란 본 약관에 동의하고 회사와 서비스 이용계약을 체결한 자를 의미합니다.{'\n\n'}
               3. "게시물"이란 회원이 서비스에 게시한 문자, 문서, 그림, 음성, 영상 또는 이들의 조합으로 이루어진 모든 정보를 의미합니다.
             </Text>

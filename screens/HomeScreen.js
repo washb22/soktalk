@@ -117,6 +117,7 @@ export default function HomeScreen({ navigation, route, category }) {
   const fetchPosts = async (page = 1) => {
     try {
       const postsRef = collection(db, 'posts');
+      const POSTS_PER_PAGE = 15;
       
       let q;
       if (category) {
@@ -125,11 +126,11 @@ export default function HomeScreen({ navigation, route, category }) {
           postsRef, 
           where('category', '==', category),
           orderBy('createdAt', 'desc'),
-          limit(50) // 필터링을 위해 더 많이 가져옴
+          limit(200) // 더 많이 가져옴
         );
       } else {
         // 🔥 인기글: 모든 게시글을 가져와서 점수 계산 후 정렬
-        q = query(postsRef, limit(100)); // 최근 100개 글만 가져오기
+        q = query(postsRef, limit(200));
       }
       
       const snapshot = await getDocs(q);
@@ -186,15 +187,21 @@ export default function HomeScreen({ navigation, route, category }) {
             ...post,
             popularityScore: calculatePopularityScore(post)
           }))
-          .sort((a, b) => b.popularityScore - a.popularityScore)
-          .slice(0, 15); // 상위 15개만 표시
-      } else {
-        // 카테고리별은 최신순으로 15개
-        postsData = postsData.slice(0, 15);
+          .sort((a, b) => b.popularityScore - a.popularityScore);
       }
       
+      // 📄 페이지네이션 계산
+      const totalPosts = postsData.length;
+      const calculatedTotalPages = Math.ceil(totalPosts / POSTS_PER_PAGE);
+      setTotalPages(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
+      
+      // 현재 페이지에 해당하는 게시글만 추출
+      const startIndex = (page - 1) * POSTS_PER_PAGE;
+      const endIndex = startIndex + POSTS_PER_PAGE;
+      const pagedPosts = postsData.slice(startIndex, endIndex);
+      
       // 최종 데이터 준비
-      const finalPostsData = postsData.map(post => ({
+      const finalPostsData = pagedPosts.map((post, index) => ({
         id: String(post.id),
         title: String(post.title),
         content: String(post.content),
@@ -205,11 +212,12 @@ export default function HomeScreen({ navigation, route, category }) {
         comments: Number(post.comments),
         category: String(post.category),
         createdAt: String(post.createdAtFormatted),
-        popularityScore: post.popularityScore ? Number(post.popularityScore) : undefined
+        popularityScore: post.popularityScore ? Number(post.popularityScore) : undefined,
+        // 🏆 전체 순위 저장 (인기글용)
+        globalRank: !category ? startIndex + index : undefined
       }));
       
       setPosts(finalPostsData);
-      setTotalPages(Math.ceil(finalPostsData.length / 15));
     } catch (error) {
       console.log('게시글 로딩 에러:', error);
       setPosts([]);
@@ -254,11 +262,11 @@ export default function HomeScreen({ navigation, route, category }) {
       <View style={styles.postHeader}>
         <Text style={styles.category}>{String(item.category || '잡담')}</Text>
         <View style={styles.headerRight}>
-          {/* 🏆 인기글 1~5위만 표시 */}
-          {!category && index < 5 && (
+          {/* 🏆 인기글 1~5위만 표시 (전체 순위 기준) */}
+          {!category && item.globalRank !== undefined && item.globalRank < 5 && (
             <View style={styles.rankBadge}>
               <Ionicons name="trophy" size={14} color="#FFB800" />
-              <Text style={styles.rankText}>{index + 1}위</Text>
+              <Text style={styles.rankText}>{item.globalRank + 1}위</Text>
             </View>
           )}
           <Text style={styles.time}>{String(item.createdAt || '방금 전')}</Text>
@@ -327,7 +335,7 @@ export default function HomeScreen({ navigation, route, category }) {
           </View>
         }
         ListFooterComponent={
-          posts.length > 0 && (
+          posts.length > 0 && totalPages > 1 && (
             <View style={styles.pagination}>
               <TouchableOpacity
                 style={[styles.pageButton, currentPage === 1 && styles.pageButtonDisabled]}

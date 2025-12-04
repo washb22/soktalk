@@ -2,7 +2,7 @@
   "expo": {
     "name": "마음다락방",
     "slug": "soktalk",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -17,11 +17,14 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.wkrgud.soktalk",
-      "buildNumber": "1",
+      "buildNumber": "3",
       "googleServicesFile": "./GoogleService-Info.plist",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSUserTrackingUsageDescription": "맞춤형 광고를 제공하기 위해 사용자 활동을 추적합니다.",
+        "NSPhotoLibraryUsageDescription": "게시글에 사진을 첨부하기 위해 사진 라이브러리 접근 권한이 필요합니다.",
+        "NSCameraUsageDescription": "게시글에 사진을 첨부하기 위해 카메라 접근 권한이 필요합니다.",
         "CFBundleLocalizations": ["ko"],
         "CFBundleDevelopmentRegion": "ko"
       }
@@ -49,6 +52,14 @@
         }
       ],
       "expo-tracking-transparency",
+      "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "게시글에 사진을 첨부하기 위해 사진 라이브러리 접근 권한이 필요합니다.",
+          "cameraPermission": "게시글에 사진을 첨부하기 위해 카메라 접근 권한이 필요합니다."
+        }
+      ],
       [
         "react-native-google-mobile-ads",
         {
