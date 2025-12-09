@@ -320,6 +320,23 @@ export default function CompatibilityScreen() {
 
       if (data.success && data.advice) {
         setAdviceResult(data.advice);
+
+        // ✅ 조언 기록 저장
+        const user = auth.currentUser;
+        if (user) {
+          try {
+            await addDoc(collection(db, 'users', user.uid, 'adviceHistory'), {
+              partnerName: selectedPartner.partnerName,
+              situation: situation.trim(),
+              compatibilityScore: selectedPartner.result.percentage,
+              advice: data.advice,
+              createdAt: serverTimestamp(),
+            });
+            console.log('✅ 조언 기록 저장 완료');
+          } catch (saveError) {
+            console.error('조언 기록 저장 실패:', saveError);
+          }
+        }
       } else {
         throw new Error('유효하지 않은 응답');
       }
@@ -652,7 +669,7 @@ export default function CompatibilityScreen() {
                   <View style={[styles.card, styles.adviceCard]}>
                     <View style={styles.cardHeader}>
                       <Ionicons name="chatbubble-ellipses" size={20} color="#FF6B6B" />
-                      <Text style={styles.cardTitle}>AI 조언</Text>
+                      <Text style={styles.cardTitle}>오늘의 조언</Text>
                     </View>
                     <Text style={styles.cardText}>{adviceResult}</Text>
                   </View>

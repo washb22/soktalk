@@ -1,3 +1,26 @@
+// 스타일 모드 (랜덤하게 적용)
+const STYLE_MODES = [
+  '놀리면서도 진심 담긴 조언',
+  '찔리지만 인정할 수밖에 없는 직설',
+  '다정하게 팩폭하는 친구',
+  '웃기면서도 핵심 찌르는 톤',
+  '약간 선 넘는 친한 친구 말투',
+  '공감하다가 갑자기 현실 직시시키는 톤',
+];
+
+function pickStyle(seed) {
+  return STYLE_MODES[Math.abs(seed) % STYLE_MODES.length];
+}
+
+function getSeed(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return hash;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -23,35 +46,55 @@ export default async function handler(req, res) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new Error('OpenAI API key not found');
 
-    // 톤 보정: 궁합 점수에 따라 직설/부드러움 조절
-    const score = typeof compatibilityScore === 'number' ? compatibilityScore : 50;
-    const tone =
-      score >= 75 ? '희망적이고 따뜻한 톤' :
-      score >= 45 ? '현실적이되 차분하고 구체적인 톤' :
-      '직설적이되 상처를 최소화하는 신중한 톤';
+    // 시드 생성 및 스타일 선택
+    const seed = getSeed(partnerName + situation);
+    const style = pickStyle(seed);
 
-    // 상투어/일반론 차단 (프롬프트 레벨)
+    // 궁합 점수에 따른 현실 반영도
+    const score = typeof compatibilityScore === 'number' ? compatibilityScore : 50;
+    const realityLevel =
+      score >= 75 ? '희망적이지만 방심 포인트도 콕 찍어주기' :
+      score >= 45 ? '가능성과 위험 요소 둘 다 솔직하게' :
+      '냉정하게 현실 직시, 하지만 완전 절망은 아니게';
+
+    // 뻔한 표현 금지 (확장)
     const bannedPhrases = [
       '대화가 중요해요', '진심을 전해보세요', '상대방을 이해해보세요',
-      '시간이 해결해줄 거예요', '서로에게 시간을 주세요', '그럴 수 있어요'
+      '시간이 해결해줄 거예요', '서로에게 시간을 주세요', '그럴 수 있어요',
+      '솔직하게 대화해보세요', '마음을 열어보세요', '노력하면 될 거예요',
+      '서로 배려하면', '이해하려고 노력해보세요', '감정을 표현해보세요'
     ];
 
-    // 시스템 프롬프트: 역할·금지어·체크리스트 고정
-    const systemPrompt = `
-당신은 한국어로 답하는 연애 상담가입니다. 목표는 "특정 상황"에 딱 맞는 실행 조언을 주는 것입니다.
+    // 시스템 프롬프트: 친구처럼 재미있게!
+    const systemPrompt = `당신은 솔직하고 유머 있는 친구입니다. 연애 고민 상담을 해주는데, 절대 상담사처럼 딱딱하게 말하지 않습니다.
 
-규칙:
-- 사용자가 입력한 상황문장을 반드시 1번 문단에서 "" 인용부호로 재인용합니다.
-- 공감(한 문단) → 상대 입장 해석(한 문단) → 즉시 실행 행동(2~3개 불릿) → 실제 대화 예시(따옴표로 1~2개) 순서로 만듭니다.
-- 불릿 행동은 "오늘/지금" 기준의 측정가능한 행동으로 씁니다. (예: “30분 산책 제안”, “메시지 2문장 보내기” 등)
-- 대화 예시는 한국어 구체 문장으로 작성합니다. 이모티콘/이모지는 쓰지 않습니다.
-- 금지: 모호한 일반론, 추상적 당위 (“${bannedPhrases.join(' / ')}”) 및 그 유사표현.
-- 길이: 전체 5~8문장 분량 내에서 간결하게. (불릿은 문장 수에서 제외)
-- 어투: ${tone}.
-- 출력은 반드시 아래 JSON 스키마에 맞춰서만 반환합니다. 한국어 값을 채우세요.
-`;
+톤 스타일: "${style}"
+현실 반영도: ${realityLevel}
 
-    // 사용자 프롬프트를 구조화
+작성 가이드:
+- empathy (첫인상): 읽자마자 "어 이거 내 얘기인데?" 하게 만드는 한마디. 상황을 인용하되 친구처럼.
+  예시: "야, '${situation.slice(0, 30)}...' 이거 읽자마자 좀 답답했어. 근데 네 마음 이해해."
+  
+- partner_view (상대방 분석): 상대가 왜 그랬을지 뼈 때리는 분석. 뻔한 말 금지!
+  예시: "솔직히 ${partnerName}이(가) 그런 건 바빠서가 아니라 우선순위에서 밀린 거일 수도 있어."
+  
+- actions (할 것 2-3개): 오늘 당장 할 수 있는 구체적 행동. 애매한 거 금지!
+  예시: ["오늘 저녁에 '요즘 바빠? 궁금했어' 딱 한 줄만 보내", "답장 오기 전까지 연락 안 하기"]
+  
+- dialogues (메시지 예시 1-2개): 실제로 복사해서 보낼 수 있는 메시지
+  예시: ["야 오랜만~ 요즘 어떻게 지내?", "갑자기 네 생각나서ㅋㅋ 밥이나 먹자"]
+
+중요 규칙:
+- 친구가 술자리에서 조언해주는 느낌으로 작성
+- "${bannedPhrases.join('", "')}" 같은 뻔한 말 절대 금지
+- 이모지 사용 금지
+- ${partnerName} 이름 적극 활용해서 개인화
+- 구체적인 상황 예측 필수
+- 읽는 사람이 "어 맞는데..." 하게 찔리는 내용
+
+출력은 반드시 JSON 스키마에 맞춰서만 반환하세요.`;
+
+    // 사용자 프롬프트
     const userPrompt = {
       partnerName,
       situation,
@@ -89,7 +132,7 @@ export default async function handler(req, res) {
             },
             risk_flags: {
               type: 'array',
-              description: '갈등 고조/안전 관련 징후가 있으면 간단 메모',
+              description: '하면 안 되는 행동이나 주의할 점',
               items: { type: 'string' }
             }
           },
@@ -98,7 +141,7 @@ export default async function handler(req, res) {
       }
     };
 
-    // OpenAI API 호출 (구조화 출력)
+    // OpenAI API 호출
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -112,18 +155,20 @@ export default async function handler(req, res) {
           {
             role: 'user',
             content:
+              `고민 상황: "${situation}"\n상대방: ${partnerName}\n궁합 점수: ${score}%\n\n` +
+              `이 상황에 맞는 찐친 조언을 해줘. 뻔한 말 하면 친구 잃는다고 생각하고.\n\n` +
               `입력(JSON):\n` +
               JSON.stringify(userPrompt, null, 2) +
               `\n\n반드시 JSON으로만 응답하세요.`
           }
         ],
-        // "일반화"를 줄이기 위해 온도 낮춤, 패널티 제거
-        temperature: 0.4,
-        top_p: 0.9,
-        presence_penalty: 0.0,
-        frequency_penalty: 0.0,
-        max_tokens: 450,
-        response_format: responseFormat
+        temperature: 0.85,
+        top_p: 0.95,
+        presence_penalty: 0.3,
+        frequency_penalty: 0.5,
+        max_tokens: 500,
+        response_format: responseFormat,
+        seed: seed
       })
     });
 
@@ -132,7 +177,6 @@ export default async function handler(req, res) {
     }
 
     const data = await response.json();
-    // gpt-4o-mini의 json_schema 출력은 choices[0].message.content에 JSON 문자열로 도착
     let parsed;
     try {
       parsed = JSON.parse(data?.choices?.[0]?.message?.content || '{}');
@@ -140,16 +184,15 @@ export default async function handler(req, res) {
       throw new Error('Invalid JSON from model');
     }
 
-    // 후처리 가드: 상황문(핵심 단어) 최소 2개 이상이 본문에 반영되었는지 간단 체크
+    // 후처리 가드: 상황문 반영 체크
     const keyTokens = extractKeyTokens(situation);
     const mergedText = [parsed.empathy, parsed.partner_view, ...(parsed.actions || []), ...(parsed.dialogues || [])].join(' ');
     const matchedCount = keyTokens.filter(t => mergedText.includes(t)).length;
     if (matchedCount < Math.min(2, keyTokens.length)) {
-      // 가벼운 보정: 상황문을 첫 문단에 재삽입
-      parsed.empathy = `상황 인용: "${situation}"\n` + (parsed.empathy || '');
+      parsed.empathy = `야, "${situation.slice(0, 50)}..." 이거 보고 좀 답답했어.\n` + (parsed.empathy || '');
     }
 
-    // 최종 렌더링 (UI에 보기 좋은 형태)
+    // 최종 렌더링
     const adviceText = renderAdvice({
       situation,
       partnerName,
@@ -163,18 +206,32 @@ export default async function handler(req, res) {
     res.status(200).json({ success: true, advice: adviceText, raw: parsed });
   } catch (error) {
     console.error('API Error:', error);
-    const fallback = `
-상황 인용: "${(req.body?.situation || '').slice(0, 200)}"
-지금 느끼는 불편함을 가볍게 넘기지 않은 점이 좋아요. 상대(${req.body?.partnerName || '상대방'})가 왜 그렇게 반응했을지 한 가지 가설만 세우고, 오늘 단 한 번의 짧은 대화를 시도해보세요.
-- 오늘 안에 "10분만 이야기할래?"라고 먼저 제안해요.
-- 오해 포인트를 1가지로 좁혀서 묻고, 상대 답을 끊지 말고 끝까지 듣습니다.
-예시) "어제 문자 늦게 본 게 신경 쓰였어? 내가 어떻게 했으면 좋겠는지 말해줄래?"
-`.trim();
+    const { partnerName = '그 사람', situation = '' } = req.body || {};
+    const fallback = `💬 솔직히 말할게
+
+야, "${situation.slice(0, 50)}..." 이거 보니까 좀 답답하긴 하다.
+
+🔍 현실 체크:
+${partnerName}이(가) 그렇게 반응한 건 아마 부담됐거나, 본인도 정리가 안 된 거일 수 있어.
+
+✅ 이렇게 해:
+- 오늘은 연락하지 말고, 내일 "요즘 어때? 밥이나 먹자" 이 정도로 가볍게 던져봐.
+- 답장 올 때까지 추가 연락 금지.
+
+❌ 이건 하지마:
+"왜 연락 안 해?" "내가 뭐 잘못했어?" 이런 거 보내면 진짜 끝이야.
+
+📱 이렇게 보내:
+"야 오랜만~ 이번 주 시간 되면 밥 ㄱ?"
+
+🎯 마지막으로:
+이거 고민하는 시간에 네 할 일이나 해. 진심이야.`.trim();
+
     res.status(200).json({ success: true, advice: fallback });
   }
 }
 
-/** 상황문에서 핵심 키워드 3~5개 추출(초간단) */
+/** 상황문에서 핵심 키워드 추출 */
 function extractKeyTokens(s) {
   try {
     const clean = String(s || '')
@@ -182,7 +239,6 @@ function extractKeyTokens(s) {
       .replace(/\s+/g, ' ')
       .trim();
     const words = clean.split(' ').filter(w => w.length >= 2);
-    // 너무 흔한 한국어 불용어 최소 제거
     const stop = new Set(['그리고', '그래서', '하지만', '그런데', '저는', '제가', '너무', '좀', '약간', '그', '이']);
     const tokens = words.filter(w => !stop.has(w));
     return tokens.slice(0, 5);
@@ -191,22 +247,21 @@ function extractKeyTokens(s) {
   }
 }
 
-/** JSON을 자연어 카드로 렌더링 */
+/** JSON을 보기 좋은 카드로 렌더링 */
 function renderAdvice({ situation, partnerName, empathy, partner_view, actions = [], dialogues = [], risk_flags = [] }) {
   const actionList = actions.map(a => `- ${a}`).join('\n');
-  const dialogList = dialogues.map(d => `• "${d}"`).join('\n');
-  const riskNote = risk_flags?.length ? `\n(주의 신호) ${risk_flags.join(' / ')}` : '';
-  return [
-    `상황 인용: "${situation}"`,
-    '',
-    empathy?.trim(),
-    partner_view?.trim(),
-    '',
-    '지금 바로 해볼 행동:',
-    actionList,
-    '',
-    '대화 예시:',
-    dialogList,
-    riskNote
-  ].join('\n');
+  const dialogList = dialogues.map(d => `"${d}"`).join('\n');
+  const riskNote = risk_flags?.length ? `\n❌ 이건 하지마:\n${risk_flags.map(r => `- ${r}`).join('\n')}` : '';
+  
+  return `💬 ${empathy?.trim() || '솔직히 말할게'}
+
+🔍 현실 체크:
+${partner_view?.trim() || '상대방 입장에서 한번 생각해봐.'}
+
+✅ 이렇게 해:
+${actionList}
+${riskNote}
+
+📱 이렇게 보내:
+${dialogList}`;
 }

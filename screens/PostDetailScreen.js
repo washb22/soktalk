@@ -180,9 +180,14 @@ export default function PostDetailScreen({ route, navigation }) {
         });
         setIsLiked(true);
         
-        // authorId로 변경!
+        // 좋아요 알림 전송
         if (postData.authorId && postData.authorId !== user.uid) {
-          await sendLikeNotification(postData.authorId, postData.title, user.displayName || '익명');
+          await sendLikeNotification(
+            postData.authorId,           // 1. 글 작성자 ID
+            user.displayName || '익명',  // 2. 좋아요 누른 사람 이름
+            postData.title,              // 3. 게시글 제목
+            post.id                      // 4. 게시글 ID
+          );
         }
       }
       
@@ -213,13 +218,13 @@ export default function PostDetailScreen({ route, navigation }) {
       
       await addDoc(commentsRef, newComment);
       
-      // authorId로 변경!
+      // 댓글 알림 전송
       if (postData.authorId && postData.authorId !== user.uid) {
         await sendCommentNotification(
-          postData.authorId, 
-          postData.title, 
-          isAnonymousComment ? '익명' : (user.displayName || '익명'),
-          comment
+          postData.authorId,                                          // 1. 글 작성자 ID
+          isAnonymousComment ? '익명' : (user.displayName || '익명'), // 2. 댓글 작성자 이름
+          postData.title,                                             // 3. 게시글 제목
+          post.id                                                     // 4. 게시글 ID
         );
       }
       
