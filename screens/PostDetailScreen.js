@@ -30,6 +30,7 @@ import {
   deleteDoc,
   setDoc,
   serverTimestamp,
+  increment,
 } from 'firebase/firestore';
 import { sendCommentNotification, sendLikeNotification } from '../services/notificationService';
 import ReportModal from '../components/ReportModal';
@@ -70,6 +71,12 @@ export default function PostDetailScreen({ route, navigation }) {
   const loadPost = async () => {
     try {
       const postRef = doc(db, 'posts', post.id);
+      
+      // ✅ 조회수 증가
+      await updateDoc(postRef, {
+        views: increment(1)
+      });
+      
       const postSnap = await getDoc(postRef);
       
       if (postSnap.exists()) {

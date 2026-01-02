@@ -38,37 +38,30 @@ const formatTimeAgo = (date) => {
 // 🔥 인기 점수 계산 함수
 const calculatePopularityScore = (post) => {
   const now = new Date();
-  let postDate = now; // 기본값: 현재 시간
+  let postDate = now;
   
-  // createdAtDate가 유효한지 확인
   if (post.createdAtDate instanceof Date && !isNaN(post.createdAtDate)) {
     postDate = post.createdAtDate;
   }
   
-  // 게시글 나이 (시간 단위)
   const ageInHours = Math.max(0, (now - postDate) / (1000 * 60 * 60));
   
-  // 시간 가중치 계산 (최신 글일수록 높은 점수)
   let timeWeight = 1.0;
   if (ageInHours < 24) {
     timeWeight = 1.5;
-  } else if (ageInHours < 168) { // 7일
+  } else if (ageInHours < 168) {
     timeWeight = 1.2;
-  } else if (ageInHours < 720) { // 30일
+  } else if (ageInHours < 720) {
     timeWeight = 1.0;
   } else {
     timeWeight = 0.8;
   }
   
-  // 기본 점수 계산
   const views = Number(post.views) || 0;
   const likes = Number(post.likes) || 0;
   const comments = Number(post.comments) || 0;
   
-  // 인기 점수 = (조회수 × 1) + (좋아요 × 5) + (댓글 × 10)
   const baseScore = (views * 1) + (likes * 5) + (comments * 10);
-  
-  // 시간 가중치 적용
   const finalScore = baseScore * timeWeight;
   
   return Math.round(finalScore);
@@ -78,6 +71,7 @@ export default function HomeScreen({ navigation, route, category }) {
   const nav = useNavigation();
   const { user } = useAuth();
   const [posts, setPosts] = useState([]);
+  const [notices, setNotices] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -91,13 +85,46 @@ export default function HomeScreen({ navigation, route, category }) {
     if (route?.params?.refresh) {
       setCurrentPage(1);
       fetchPosts(1);
+      loadNotices();
     }
   }, [route?.params?.refresh]);
 
   useEffect(() => {
     setCurrentPage(1);
     fetchPosts(1);
+    loadNotices();
   }, [category, blockedUserIds]);
+
+  // 📢 공지사항 불러오기
+  const loadNotices = async () => {
+    try {
+      const noticesRef = collection(db, 'notices');
+      const q = query(
+        noticesRef,
+        where('isActive', '==', true),
+        orderBy('createdAt', 'desc')
+      );
+      const snapshot = await getDocs(q);
+      
+      let noticesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // 해당 카테고리 또는 '전체' 공지만 필터링
+      noticesData = noticesData.filter(notice => {
+        if (notice.category === '전체') return true;
+        if (category && notice.category === category) return true;
+        if (!category && notice.category === '전체') return true;
+        return false;
+      });
+      
+      setNotices(noticesData);
+    } catch (error) {
+      console.log('공지사항 로드 에러:', error);
+      setNotices([]);
+    }
+  };
 
   // 차단된 사용자 목록 불러오기
   const loadBlockedUsers = async () => {
@@ -121,15 +148,13 @@ export default function HomeScreen({ navigation, route, category }) {
       
       let q;
       if (category) {
-        // 연애상담, 잡담은 최신순 정렬
         q = query(
           postsRef, 
           where('category', '==', category),
           orderBy('createdAt', 'desc'),
-          limit(200) // 더 많이 가져옴
+          limit(200)
         );
       } else {
-        // 🔥 인기글: 모든 게시글을 가져와서 점수 계산 후 정렬
         q = query(postsRef, limit(200));
       }
       
@@ -144,7 +169,6 @@ export default function HomeScreen({ navigation, route, category }) {
       let postsData = snapshot.docs.map(doc => {
         const data = doc.data();
         
-        // createdAt을 안전하게 처리
         let createdAtDate = null;
         let createdAtFormatted = '방금 전';
         
@@ -175,12 +199,10 @@ export default function HomeScreen({ navigation, route, category }) {
         };
       });
       
-      // 🚫 차단된 사용자 게시글 필터링
       if (blockedUserIds.length > 0) {
         postsData = postsData.filter(post => !blockedUserIds.includes(post.authorId));
       }
       
-      // 🔥 인기글인 경우 점수 계산 후 정렬
       if (!category) {
         postsData = postsData
           .map(post => ({
@@ -190,17 +212,14 @@ export default function HomeScreen({ navigation, route, category }) {
           .sort((a, b) => b.popularityScore - a.popularityScore);
       }
       
-      // 📄 페이지네이션 계산
       const totalPosts = postsData.length;
       const calculatedTotalPages = Math.ceil(totalPosts / POSTS_PER_PAGE);
       setTotalPages(calculatedTotalPages > 0 ? calculatedTotalPages : 1);
       
-      // 현재 페이지에 해당하는 게시글만 추출
       const startIndex = (page - 1) * POSTS_PER_PAGE;
       const endIndex = startIndex + POSTS_PER_PAGE;
       const pagedPosts = postsData.slice(startIndex, endIndex);
       
-      // 최종 데이터 준비
       const finalPostsData = pagedPosts.map((post, index) => ({
         id: String(post.id),
         title: String(post.title),
@@ -213,7 +232,6 @@ export default function HomeScreen({ navigation, route, category }) {
         category: String(post.category),
         createdAt: String(post.createdAtFormatted),
         popularityScore: post.popularityScore ? Number(post.popularityScore) : undefined,
-        // 🏆 전체 순위 저장 (인기글용)
         globalRank: !category ? startIndex + index : undefined
       }));
       
@@ -227,7 +245,8 @@ export default function HomeScreen({ navigation, route, category }) {
   const onRefresh = async () => {
     setRefreshing(true);
     setCurrentPage(1);
-    await loadBlockedUsers(); // 차단 목록도 새로고침
+    await loadBlockedUsers();
+    await loadNotices();
     await fetchPosts(1);
     setRefreshing(false);
   };
@@ -254,6 +273,37 @@ export default function HomeScreen({ navigation, route, category }) {
     return '인기글';
   };
 
+  // 📢 공지사항 렌더링
+  const renderNotices = () => {
+    if (notices.length === 0) return null;
+    
+    return (
+      <View style={styles.noticesContainer}>
+        {notices.map(notice => (
+          <TouchableOpacity
+            key={notice.id}
+            style={styles.noticeCard}
+            onPress={() => nav.navigate('NoticeDetail', { notice })}
+          >
+            <View style={styles.noticeIcon}>
+              <Ionicons name="megaphone" size={16} color="#FF6B6B" />
+            </View>
+            <View style={styles.noticeContent}>
+              <Text style={styles.noticeLabel}>공지</Text>
+              <Text style={styles.noticeTitle} numberOfLines={1}>
+                {notice.title}
+              </Text>
+              {notice.imageUrl && (
+                <Ionicons name="image-outline" size={14} color="#999" style={{ marginLeft: 4 }} />
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#ccc" />
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
   const renderPost = ({ item, index }) => (
     <TouchableOpacity 
       style={styles.postCard}
@@ -262,7 +312,6 @@ export default function HomeScreen({ navigation, route, category }) {
       <View style={styles.postHeader}>
         <Text style={styles.category}>{String(item.category || '잡담')}</Text>
         <View style={styles.headerRight}>
-          {/* 🏆 인기글 1~5위만 표시 (전체 순위 기준) */}
           {!category && item.globalRank !== undefined && item.globalRank < 5 && (
             <View style={styles.rankBadge}>
               <Ionicons name="trophy" size={14} color="#FFB800" />
@@ -321,6 +370,7 @@ export default function HomeScreen({ navigation, route, category }) {
         renderItem={({ item, index }) => renderPost({ item, index })}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
+        ListHeaderComponent={renderNotices}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -399,6 +449,51 @@ const styles = StyleSheet.create({
   listContainer: {
     padding: 16,
   },
+  // 📢 공지사항 스타일
+  noticesContainer: {
+    marginBottom: 12,
+  },
+  noticeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F5',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#FFE0E0',
+  },
+  noticeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFE8E8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  noticeContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  noticeLabel: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#FF6B6B',
+    backgroundColor: '#FF6B6B20',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  noticeTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  // 게시글 스타일
   postCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -430,7 +525,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
   },
-  // 🏆 순위 뱃지 스타일
   rankBadge: {
     flexDirection: 'row',
     alignItems: 'center',

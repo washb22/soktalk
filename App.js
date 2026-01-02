@@ -36,6 +36,7 @@ import LikedPostsScreen from './screens/LikedPostsScreen';
 import CommentedPostsScreen from './screens/CommentedPostsScreen';
 import TermsScreen from './screens/TermsScreen';
 import PrivacyScreen from './screens/PrivacyScreen';
+import NoticeDetailScreen from './screens/NoticeDetailScreen';
 
 function BoardScreen({ navigation }) {
   return <HomeScreen navigation={navigation} category="연애상담" />;
@@ -104,6 +105,7 @@ function MainStack() {
       <Stack.Screen name="EditPost" component={EditPostScreen} />
       <Stack.Screen name="LikedPosts" component={LikedPostsScreen} />
       <Stack.Screen name="CommentedPosts" component={CommentedPostsScreen} />
+      <Stack.Screen name="NoticeDetail" component={NoticeDetailScreen} />
       <Stack.Screen 
         name="Terms" 
         component={TermsScreen}
