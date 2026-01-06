@@ -1,5 +1,5 @@
 // App.js
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -13,11 +13,13 @@ import { db } from './firebase';
 import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 
 // 푸시 알림 서비스
-import { 
-  registerForPushNotificationsAsync, 
-  savePushToken,
-  setupNotificationListener 
-} from './services/notificationService';
+import { setupNotificationListener } from './services/notificationService';
+
+// 푸시 알림 유도 팝업
+import PushNotificationPrompt from './components/PushNotificationPrompt';
+
+// 강제 업데이트 체크
+import ForceUpdateCheck from './components/ForceUpdateCheck';
 
 // 🎯 광고 초기화
 import { initializeAds } from './services/adsConfig';
@@ -187,24 +189,27 @@ function AuthStack() {
 function AppNavigator() {
   const { user, loading } = useAuth();
   const navigationRef = useRef();
+  const [showPushPrompt, setShowPushPrompt] = useState(false);
 
   // 🎯 광고 초기화 (앱 시작 시 한 번만)
   useEffect(() => {
     initializeAds();
   }, []);
 
-  // 🔔 푸시 알림 초기화
+  // 🔔 푸시 알림 프롬프트 표시 (로그인 후 약간의 딜레이)
   useEffect(() => {
     if (user) {
       // 방문 횟수 업데이트
       updateUserVisitCount(user.uid);
       
-      // 푸시 알림 권한 요청 및 토큰 저장
-      registerForPushNotificationsAsync().then(token => {
-        if (token) {
-          savePushToken(user.uid, token);
-        }
-      });
+      // 앱이 완전히 로드된 후 푸시 프롬프트 표시 (2초 딜레이)
+      const timer = setTimeout(() => {
+        setShowPushPrompt(true);
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    } else {
+      setShowPushPrompt(false);
     }
   }, [user]);
 
@@ -247,7 +252,20 @@ function AppNavigator() {
 
   return (
     <NavigationContainer ref={navigationRef}>
-      {user ? <MainStack /> : <AuthStack />}
+      {user ? (
+        <>
+          <MainStack />
+          {/* 🔔 푸시 알림 유도 팝업 */}
+          {showPushPrompt && (
+            <PushNotificationPrompt 
+              userId={user.uid}
+              onComplete={() => setShowPushPrompt(false)}
+            />
+          )}
+        </>
+      ) : (
+        <AuthStack />
+      )}
       <StatusBar style="auto" />
     </NavigationContainer>
   );
@@ -255,9 +273,11 @@ function AppNavigator() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppNavigator />
-    </AuthProvider>
+    <ForceUpdateCheck>
+      <AuthProvider>
+        <AppNavigator />
+      </AuthProvider>
+    </ForceUpdateCheck>
   );
 }
 
