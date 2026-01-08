@@ -48,13 +48,15 @@ const calculatePopularityScore = (post) => {
   
   let timeWeight = 1.0;
   if (ageInHours < 24) {
-    timeWeight = 1.5;
+    timeWeight = 2.0;       // 24시간 이내 - 강력 부스트
+  } else if (ageInHours < 72) {
+    timeWeight = 1.5;       // 3일 이내
   } else if (ageInHours < 168) {
-    timeWeight = 1.2;
-  } else if (ageInHours < 720) {
-    timeWeight = 1.0;
+    timeWeight = 1.0;       // 7일 이내
+  } else if (ageInHours < 336) {
+    timeWeight = 0.3;       // 2주 이내 - 급격 감소
   } else {
-    timeWeight = 0.8;
+    timeWeight = 0.05;      // 2주 이후 - 거의 사라짐
   }
   
   const views = Number(post.views) || 0;

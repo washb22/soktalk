@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,9 +41,14 @@ import BannerAdComponent from '../components/BannerAd';
 import { AD_UNITS } from '../services/adsConfig';
 
 export default function PostDetailScreen({ route, navigation }) {
-  const { post } = route.params;
+  // ✅ post 객체 또는 postId 둘 다 지원 (푸시 알림 대응)
+  const postParam = route.params?.post;
+  const postIdParam = route.params?.postId || postParam?.id;
+  
   const { user } = useAuth();
+  const [postId, setPostId] = useState(postIdParam);
   const [postData, setPostData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [comment, setComment] = useState('');
   const [comments, setComments] = useState([]);
   const [isLiked, setIsLiked] = useState(false);
@@ -63,14 +69,20 @@ export default function PostDetailScreen({ route, navigation }) {
   const [reportTarget, setReportTarget] = useState(null);
 
   useEffect(() => {
-    loadPost();
-    loadComments();
-    checkBookmarkStatus();
-  }, []);
+    if (postIdParam) {
+      loadPost();
+      loadComments();
+      checkBookmarkStatus();
+    } else {
+      Alert.alert('오류', '게시글을 찾을 수 없습니다.');
+      navigation.goBack();
+    }
+  }, [postIdParam]);
 
   const loadPost = async () => {
     try {
-      const postRef = doc(db, 'posts', post.id);
+      setIsLoading(true);
+      const postRef = doc(db, 'posts', postIdParam);
       
       // ✅ 조회수 증가
       await updateDoc(postRef, {
@@ -81,6 +93,7 @@ export default function PostDetailScreen({ route, navigation }) {
       
       if (postSnap.exists()) {
         const data = postSnap.data();
+        setPostId(postSnap.id);
         setPostData(data);
         
         if (Array.isArray(data.likes)) {
@@ -89,15 +102,22 @@ export default function PostDetailScreen({ route, navigation }) {
           const likesArray = data.likesArray || [];
           setIsLiked(likesArray.includes(user.uid));
         }
+      } else {
+        Alert.alert('오류', '게시글을 찾을 수 없습니다.');
+        navigation.goBack();
       }
     } catch (error) {
       console.error('게시글 로드 에러:', error);
+      Alert.alert('오류', '게시글을 불러올 수 없습니다.');
+      navigation.goBack();
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const checkBookmarkStatus = async () => {
     try {
-      const bookmarkRef = doc(db, 'bookmarks', `${user.uid}_${post.id}`);
+      const bookmarkRef = doc(db, 'bookmarks', `${user.uid}_${postIdParam}`);
       const bookmarkSnap = await getDoc(bookmarkRef);
       setIsBookmarked(bookmarkSnap.exists());
     } catch (error) {
@@ -107,7 +127,7 @@ export default function PostDetailScreen({ route, navigation }) {
 
   const toggleBookmark = async () => {
     try {
-      const bookmarkRef = doc(db, 'bookmarks', `${user.uid}_${post.id}`);
+      const bookmarkRef = doc(db, 'bookmarks', `${user.uid}_${postId}`);
       
       if (isBookmarked) {
         await deleteDoc(bookmarkRef);
@@ -116,7 +136,7 @@ export default function PostDetailScreen({ route, navigation }) {
       } else {
         await setDoc(bookmarkRef, {
           userId: user.uid,
-          postId: post.id,
+          postId: postId,
           postTitle: postData.title,
           postCategory: postData.category,
           createdAt: new Date(),
@@ -132,7 +152,7 @@ export default function PostDetailScreen({ route, navigation }) {
 
   const loadComments = async () => {
     try {
-      const commentsRef = collection(db, 'posts', post.id, 'comments');
+      const commentsRef = collection(db, 'posts', postIdParam, 'comments');
       const q = query(commentsRef, orderBy('createdAt', 'asc'));
       const querySnapshot = await getDocs(q);
       
@@ -164,7 +184,7 @@ export default function PostDetailScreen({ route, navigation }) {
       setNextAnonymousNumber(tempNextNumber);
       setComments(commentsData);
       
-      await updateDoc(doc(db, 'posts', post.id), {
+      await updateDoc(doc(db, 'posts', postIdParam), {
         commentsCount: commentsData.length,
       });
     } catch (error) {
@@ -174,7 +194,7 @@ export default function PostDetailScreen({ route, navigation }) {
 
   const handleLike = async () => {
     try {
-      const postRef = doc(db, 'posts', post.id);
+      const postRef = doc(db, 'posts', postId);
       
       if (isLiked) {
         await updateDoc(postRef, {
@@ -193,7 +213,7 @@ export default function PostDetailScreen({ route, navigation }) {
             postData.authorId,           // 1. 글 작성자 ID
             user.displayName || '익명',  // 2. 좋아요 누른 사람 이름
             postData.title,              // 3. 게시글 제목
-            post.id                      // 4. 게시글 ID
+            postId                        // 4. 게시글 ID
           );
         }
       }
@@ -212,7 +232,7 @@ export default function PostDetailScreen({ route, navigation }) {
     }
 
     try {
-      const commentsRef = collection(db, 'posts', post.id, 'comments');
+      const commentsRef = collection(db, 'posts', postId, 'comments');
       const newComment = {
         text: comment,
         userId: user.uid,
@@ -231,7 +251,7 @@ export default function PostDetailScreen({ route, navigation }) {
           postData.authorId,                                          // 1. 글 작성자 ID
           isAnonymousComment ? '익명' : (user.displayName || '익명'), // 2. 댓글 작성자 이름
           postData.title,                                             // 3. 게시글 제목
-          post.id                                                     // 4. 게시글 ID
+          postId                                                       // 4. 게시글 ID
         );
       }
       
@@ -252,7 +272,7 @@ export default function PostDetailScreen({ route, navigation }) {
     }
 
     try {
-      const commentsRef = collection(db, 'posts', post.id, 'comments');
+      const commentsRef = collection(db, 'posts', postId, 'comments');
       const newReply = {
         text: replyText,
         userId: user.uid,
@@ -282,7 +302,7 @@ export default function PostDetailScreen({ route, navigation }) {
 
   const handlePinComment = async (commentId, isPinned) => {
     try {
-      await updateDoc(doc(db, 'posts', post.id, 'comments', commentId), {
+      await updateDoc(doc(db, 'posts', postId, 'comments', commentId), {
         isPinned: !isPinned,
       });
       await loadComments();
@@ -304,7 +324,7 @@ export default function PostDetailScreen({ route, navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteDoc(doc(db, 'posts', post.id, 'comments', commentId));
+              await deleteDoc(doc(db, 'posts', postId, 'comments', commentId));
               await loadComments();
               Alert.alert('알림', '댓글이 삭제되었습니다.');
             } catch (error) {
@@ -328,7 +348,7 @@ export default function PostDetailScreen({ route, navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteDoc(doc(db, 'posts', post.id));
+              await deleteDoc(doc(db, 'posts', postId));
               Alert.alert('알림', '게시글이 삭제되었습니다.');
               navigation.goBack();
             } catch (error) {
@@ -455,11 +475,22 @@ export default function PostDetailScreen({ route, navigation }) {
     return comment.userName || '익명';
   };
 
-  if (!postData) {
+  // ✅ 로딩 중 표시 개선
+  if (isLoading || !postData) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text>로딩 중...</Text>
-      </View>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>게시글</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF6B6B" />
+          <Text style={{ marginTop: 12, color: '#666' }}>게시글을 불러오는 중...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -490,7 +521,7 @@ export default function PostDetailScreen({ route, navigation }) {
             <>
               <TouchableOpacity
                 style={styles.headerButton}
-                onPress={() => navigation.navigate('EditPost', { post: { id: post.id, ...postData } })}
+                onPress={() => navigation.navigate('EditPost', { post: { id: postId, ...postData } })}
               >
                 <Ionicons name="create-outline" size={24} color="#333" />
               </TouchableOpacity>
@@ -505,10 +536,11 @@ export default function PostDetailScreen({ route, navigation }) {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.container}
+        style={{ flex: 1 }}
         keyboardVerticalOffset={0}
       >
         <ScrollView style={styles.scrollView}>
+          {/* 게시글 내용 */}
           <View style={styles.postContainer}>
             <View style={styles.categoryBadge}>
               <Text style={styles.categoryText}>{postData.category}</Text>
@@ -522,17 +554,13 @@ export default function PostDetailScreen({ route, navigation }) {
               </Text>
               <Text style={styles.date}>{formatDate(postData.createdAt)}</Text>
             </View>
-
+            
             <Text style={styles.content}>{postData.content}</Text>
-
+            
             {postData.imageUrl && (
-              <Image
-                source={{ uri: postData.imageUrl }}
-                style={styles.postImage}
-                resizeMode="contain"
-              />
+              <Image source={{ uri: postData.imageUrl }} style={styles.postImage} />
             )}
-
+            
             <View style={styles.actions}>
               <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
                 <Ionicons
@@ -558,7 +586,7 @@ export default function PostDetailScreen({ route, navigation }) {
                   
                   <TouchableOpacity
                     style={styles.reportButton}
-                    onPress={() => handleReport({ type: 'post', id: post.id, content: postData.title })}
+                    onPress={() => handleReport({ type: 'post', id: postId, content: postData.title })}
                   >
                     <Text style={styles.reportButtonText}>신고</Text>
                   </TouchableOpacity>
@@ -609,13 +637,13 @@ export default function PostDetailScreen({ route, navigation }) {
                       >
                         <Ionicons
                           name={item.isPinned ? 'pin' : 'pin-outline'}
-                          size={18}
-                          color={item.isPinned ? '#FF6B6B' : '#666'}
+                          size={16}
+                          color={item.isPinned ? '#FF6B6B' : '#999'}
                         />
                       </TouchableOpacity>
                     )}
                     
-                    {/* 자기 댓글 삭제 버튼 */}
+                    {/* 내 댓글 삭제 버튼 */}
                     {item.userId === user.uid && (
                       <TouchableOpacity
                         style={styles.deleteIconButton}
@@ -624,8 +652,8 @@ export default function PostDetailScreen({ route, navigation }) {
                         <Ionicons name="trash-outline" size={16} color="#999" />
                       </TouchableOpacity>
                     )}
-                    
-                    {/* 다른 사람 댓글: 차단 & 신고 버튼 */}
+
+                    {/* 다른 사람 댓글 차단 & 신고 버튼 */}
                     {item.userId !== user.uid && (
                       <>
                         <TouchableOpacity
@@ -638,7 +666,7 @@ export default function PostDetailScreen({ route, navigation }) {
                           style={styles.reportIconButton}
                           onPress={() => handleReport({ type: 'comment', id: item.id, content: item.text })}
                         >
-                          <Ionicons name="alert-circle-outline" size={16} color="#999" />
+                          <Ionicons name="flag-outline" size={16} color="#999" />
                         </TouchableOpacity>
                       </>
                     )}
@@ -652,7 +680,7 @@ export default function PostDetailScreen({ route, navigation }) {
                     style={styles.replyButton}
                     onPress={() => setReplyingTo(item)}
                   >
-                    <Ionicons name="arrow-undo-outline" size={16} color="#999" />
+                    <Ionicons name="chatbubble-outline" size={16} color="#999" />
                     <Text style={styles.replyButtonText}>답글</Text>
                   </TouchableOpacity>
                 </View>
@@ -661,41 +689,41 @@ export default function PostDetailScreen({ route, navigation }) {
           </View>
         </ScrollView>
 
+        {/* 답글 작성 중일 때 표시 */}
         {replyingTo && (
           <View style={styles.replyingContainer}>
             <View style={styles.replyingInfo}>
-              <Ionicons name="arrow-undo" size={20} color="#FF6B6B" />
+              <Ionicons name="arrow-undo" size={16} color="#FF6B6B" />
               <Text style={styles.replyingText}>
                 {getDisplayName(replyingTo)}님에게 답글 작성 중
               </Text>
             </View>
-            <TouchableOpacity onPress={() => {
-              setReplyingTo(null);
-              setIsAnonymousReply(false);
-            }}>
-              <Ionicons name="close" size={24} color="#666" />
+            <TouchableOpacity onPress={() => setReplyingTo(null)}>
+              <Ionicons name="close-circle" size={24} color="#999" />
             </TouchableOpacity>
           </View>
         )}
 
+        {/* 댓글 입력 */}
         <View style={styles.inputContainer}>
-          <TouchableOpacity
-            style={styles.anonymousToggle}
-            onPress={() => {
-              if (replyingTo) {
-                setIsAnonymousReply(!isAnonymousReply);
-              } else {
-                setIsAnonymousComment(!isAnonymousComment);
+          <View style={styles.anonymousToggle}>
+            <TouchableOpacity
+              onPress={() => replyingTo 
+                ? setIsAnonymousReply(!isAnonymousReply) 
+                : setIsAnonymousComment(!isAnonymousComment)
               }
-            }}
-          >
-            <Ionicons
-              name={(replyingTo ? isAnonymousReply : isAnonymousComment) ? 'checkbox' : 'square-outline'}
-              size={20}
-              color="#FF6B6B"
-            />
+            >
+              <Ionicons
+                name={(replyingTo ? isAnonymousReply : isAnonymousComment) 
+                  ? 'checkbox' 
+                  : 'square-outline'
+                }
+                size={24}
+                color="#FF6B6B"
+              />
+            </TouchableOpacity>
             <Text style={styles.anonymousText}>익명으로 작성</Text>
-          </TouchableOpacity>
+          </View>
           
           <View style={styles.inputRow}>
             <TextInput

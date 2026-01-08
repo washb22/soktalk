@@ -6,6 +6,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet } from 'react-native';
+import * as Notifications from 'expo-notifications';
 
 // AuthProvider 임포트
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -190,6 +191,8 @@ function AppNavigator() {
   const { user, loading } = useAuth();
   const navigationRef = useRef();
   const [showPushPrompt, setShowPushPrompt] = useState(false);
+  const [isNavigationReady, setIsNavigationReady] = useState(false);
+  const [pendingNotification, setPendingNotification] = useState(null);
 
   // 🎯 광고 초기화 (앱 시작 시 한 번만)
   useEffect(() => {
@@ -213,13 +216,45 @@ function AppNavigator() {
     }
   }, [user]);
 
-  // 🔔 알림 리스너 설정
+  // 🔔 알림 리스너 설정 (앱 실행 중 알림 클릭)
   useEffect(() => {
-    if (navigationRef.current) {
-      const cleanup = setupNotificationListener(navigationRef.current);
-      return cleanup;
-    }
+    const cleanup = setupNotificationListener(navigationRef.current);
+    return cleanup;
+  }, [isNavigationReady]);
+
+  // 🔔 앱 종료/백그라운드 상태에서 알림 클릭 처리
+  useEffect(() => {
+    const checkInitialNotification = async () => {
+      try {
+        const response = await Notifications.getLastNotificationResponseAsync();
+        if (response) {
+          const data = response.notification.request.content.data;
+          if (data?.screen === 'PostDetail' && data?.postId) {
+            setPendingNotification(data);
+          }
+        }
+      } catch (error) {
+        console.error('초기 알림 확인 에러:', error);
+      }
+    };
+    
+    checkInitialNotification();
   }, []);
+
+  // 🔔 대기 중인 알림 처리 (네비게이션 준비 + 로그인 완료 후)
+  useEffect(() => {
+    if (pendingNotification && isNavigationReady && user && navigationRef.current) {
+      const { screen, postId } = pendingNotification;
+      
+      // 약간의 딜레이 후 네비게이션 (화면 렌더링 대기)
+      setTimeout(() => {
+        if (screen === 'PostDetail' && postId) {
+          navigationRef.current.navigate('PostDetail', { postId });
+        }
+        setPendingNotification(null);
+      }, 500);
+    }
+  }, [pendingNotification, isNavigationReady, user]);
 
   const updateUserVisitCount = async (userId) => {
     try {
@@ -251,7 +286,10 @@ function AppNavigator() {
   }
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer 
+      ref={navigationRef}
+      onReady={() => setIsNavigationReady(true)}
+    >
       {user ? (
         <>
           <MainStack />
