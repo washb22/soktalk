@@ -205,10 +205,10 @@ function AppNavigator() {
       // 방문 횟수 업데이트
       updateUserVisitCount(user.uid);
       
-      // 앱이 완전히 로드된 후 푸시 프롬프트 표시 (2초 딜레이)
+      // 앱이 완전히 로드된 후 푸시 프롬프트 표시 (5초 딜레이 - 앱 탐색 시간 확보)
       const timer = setTimeout(() => {
         setShowPushPrompt(true);
-      }, 2000);
+      }, 5000);
       
       return () => clearTimeout(timer);
     } else {

@@ -18,9 +18,10 @@ import { doc, updateDoc } from 'firebase/firestore';
 
 const PROMPT_STORAGE_KEY = 'push_prompt_shown';
 const REMINDER_STORAGE_KEY = 'push_reminder_last_shown';
-const REMINDER_INTERVAL_DAYS = 7; // 7일마다 리마인더
+const POST_PROMPT_STORAGE_KEY = 'push_post_prompt_shown';
+const REMINDER_INTERVAL_DAYS = 3; // 3일마다 리마인더
 
-export default function PushNotificationPrompt({ userId, onComplete }) {
+export default function PushNotificationPrompt({ userId, onComplete, trigger = 'login' }) {
   const [showPrePermission, setShowPrePermission] = useState(false);
   const [showReminder, setShowReminder] = useState(false);
 
@@ -32,16 +33,39 @@ export default function PushNotificationPrompt({ userId, onComplete }) {
     try {
       // 현재 권한 상태 확인
       const { status } = await Notifications.getPermissionsAsync();
-      
+
       if (status === 'granted') {
-        // 이미 허용됨 - 아무것도 안 함
+        // 이미 허용됨 - 토큰이 저장되어 있는지 확인하고 없으면 저장
+        try {
+          const token = (await Notifications.getExpoPushTokenAsync({
+            projectId: 'b0255ada-c852-4ab5-b44c-5d5ba275781d'
+          })).data;
+          if (token && userId) {
+            const userRef = doc(db, 'users', userId);
+            await updateDoc(userRef, {
+              pushToken: token,
+              pushTokenUpdatedAt: new Date(),
+            });
+          }
+        } catch (e) {}
         onComplete && onComplete();
         return;
       }
 
-      // 사전 설명 팝업을 이미 봤는지 확인
+      // 글 작성 후 트리거인 경우: 별도 체크
+      if (trigger === 'post') {
+        const postPromptShown = await AsyncStorage.getItem(POST_PROMPT_STORAGE_KEY);
+        if (!postPromptShown) {
+          setShowPrePermission(true);
+          return;
+        }
+        onComplete && onComplete();
+        return;
+      }
+
+      // 로그인/가입 트리거: 기존 로직
       const promptShown = await AsyncStorage.getItem(PROMPT_STORAGE_KEY);
-      
+
       if (!promptShown) {
         // 처음 - 사전 설명 팝업 표시
         setShowPrePermission(true);
@@ -75,7 +99,8 @@ export default function PushNotificationPrompt({ userId, onComplete }) {
   const handleAcceptPrePermission = async () => {
     setShowPrePermission(false);
     await AsyncStorage.setItem(PROMPT_STORAGE_KEY, 'true');
-    
+    await AsyncStorage.setItem(POST_PROMPT_STORAGE_KEY, 'true');
+
     try {
       const { status } = await Notifications.requestPermissionsAsync();
       
@@ -105,6 +130,9 @@ export default function PushNotificationPrompt({ userId, onComplete }) {
   const handleDeclinePrePermission = async () => {
     setShowPrePermission(false);
     await AsyncStorage.setItem(PROMPT_STORAGE_KEY, 'true');
+    if (trigger === 'post') {
+      await AsyncStorage.setItem(POST_PROMPT_STORAGE_KEY, 'true');
+    }
     await AsyncStorage.setItem(REMINDER_STORAGE_KEY, Date.now().toString());
     onComplete && onComplete();
   };
@@ -143,23 +171,33 @@ export default function PushNotificationPrompt({ userId, onComplete }) {
           </View>
           
           {/* 제목 */}
-          <Text style={styles.title}>알림을 켜시겠어요?</Text>
-          
+          <Text style={styles.title}>
+            {trigger === 'post' ? '글 등록 완료!' : '알림을 켜시겠어요?'}
+          </Text>
+
           {/* 설명 */}
-          <View style={styles.benefitList}>
-            <View style={styles.benefitItem}>
-              <Ionicons name="chatbubble-ellipses" size={20} color="#FF6B6B" />
-              <Text style={styles.benefitText}>내 글에 댓글이 달리면 바로 알려드려요</Text>
+          {trigger === 'post' ? (
+            <View style={styles.benefitList}>
+              <Text style={styles.postPromptDescription}>
+                내 글에 댓글이 달리면{'\n'}알림으로 바로 확인할 수 있어요!
+              </Text>
             </View>
-            <View style={styles.benefitItem}>
-              <Ionicons name="heart" size={20} color="#FF6B6B" />
-              <Text style={styles.benefitText}>누군가 내 글을 좋아하면 알려드려요</Text>
+          ) : (
+            <View style={styles.benefitList}>
+              <View style={styles.benefitItem}>
+                <Ionicons name="chatbubble-ellipses" size={20} color="#FF6B6B" />
+                <Text style={styles.benefitText}>내 글에 댓글이 달리면 바로 알려드려요</Text>
+              </View>
+              <View style={styles.benefitItem}>
+                <Ionicons name="heart" size={20} color="#FF6B6B" />
+                <Text style={styles.benefitText}>누군가 내 글을 좋아하면 알려드려요</Text>
+              </View>
+              <View style={styles.benefitItem}>
+                <Ionicons name="megaphone" size={20} color="#FF6B6B" />
+                <Text style={styles.benefitText}>이벤트, 공지사항도 놓치지 마세요</Text>
+              </View>
             </View>
-            <View style={styles.benefitItem}>
-              <Ionicons name="megaphone" size={20} color="#FF6B6B" />
-              <Text style={styles.benefitText}>이벤트, 공지사항도 놓치지 마세요</Text>
-            </View>
-          </View>
+          )}
           
           {/* 버튼들 */}
           <View style={styles.buttonContainer}>
@@ -313,6 +351,13 @@ const styles = StyleSheet.create({
     color: '#555',
     marginLeft: 12,
     flex: 1,
+  },
+  postPromptDescription: {
+    fontSize: 16,
+    color: '#555',
+    textAlign: 'center',
+    lineHeight: 26,
+    marginBottom: 10,
   },
   reminderDescription: {
     fontSize: 15,

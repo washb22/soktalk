@@ -19,6 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { uploadImage } from '../utils/imageUpload';
+import PushNotificationPrompt from '../components/PushNotificationPrompt';
 
 export default function WritePostScreen({ route, navigation }) {
   const { user } = useAuth();
@@ -31,6 +32,7 @@ export default function WritePostScreen({ route, navigation }) {
   const [imageUri, setImageUri] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [imageAspectRatio, setImageAspectRatio] = useState(1);
+  const [showPushPrompt, setShowPushPrompt] = useState(false);
 
   const pickImage = async () => {
     try {
@@ -103,16 +105,8 @@ export default function WritePostScreen({ route, navigation }) {
 
       await addDoc(collection(db, 'posts'), postData);
 
-      Alert.alert('완료', '게시글이 등록되었습니다.', [
-        {
-          text: '확인',
-          onPress: () => {
-            navigation.navigate('MainTabs', {
-              screen: '인기글'
-            });
-          }
-        }
-      ]);
+      // 푸시 알림 프롬프트 표시 (토큰 없는 사용자에게만)
+      setShowPushPrompt(true);
     } catch (error) {
       console.error('게시글 등록 에러:', error);
       Alert.alert('오류', '게시글 등록에 실패했습니다');
@@ -275,6 +269,18 @@ export default function WritePostScreen({ route, navigation }) {
           <Text style={styles.charCount}>{content.length}자</Text>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* 글 작성 후 푸시 알림 유도 */}
+      {showPushPrompt && (
+        <PushNotificationPrompt
+          userId={user?.uid}
+          trigger="post"
+          onComplete={() => {
+            setShowPushPrompt(false);
+            navigation.navigate('MainTabs', { screen: '인기글' });
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
