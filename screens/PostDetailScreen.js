@@ -35,6 +35,7 @@ import {
 } from 'firebase/firestore';
 import { sendCommentNotification, sendLikeNotification } from '../services/notificationService';
 import ReportModal from '../components/ReportModal';
+import PushNotificationPrompt from '../components/PushNotificationPrompt';
 
 // 🎯 광고 추가
 import BannerAdComponent from '../components/BannerAd';
@@ -51,6 +52,8 @@ export default function PostDetailScreen({ route, navigation }) {
   const [isLoading, setIsLoading] = useState(true);
   const [comment, setComment] = useState('');
   const [comments, setComments] = useState([]);
+  // 🔔 내 글에 댓글이 달려있고 푸시 토큰이 없으면 prompt
+  const [showCommentPushPrompt, setShowCommentPushPrompt] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [isAnonymousComment, setIsAnonymousComment] = useState(false);
@@ -183,7 +186,24 @@ export default function PostDetailScreen({ route, navigation }) {
       setAnonymousMap(tempAnonymousMap);
       setNextAnonymousNumber(tempNextNumber);
       setComments(commentsData);
-      
+
+      // 🔔 골든모먼트: 내 글에 댓글이 달렸고, 내 푸시 토큰이 없으면 prompt
+      try {
+        if (
+          user &&
+          postData &&
+          postData.authorId === user.uid &&
+          commentsData.length > 0
+        ) {
+          const myDoc = await getDoc(doc(db, 'users', user.uid));
+          if (myDoc.exists() && !myDoc.data().pushToken) {
+            setShowCommentPushPrompt(true);
+          }
+        }
+      } catch (e) {
+        console.log('push prompt 체크 실패:', e);
+      }
+
       await updateDoc(doc(db, 'posts', postIdParam), {
         commentsCount: commentsData.length,
       });
@@ -748,6 +768,15 @@ export default function PostDetailScreen({ route, navigation }) {
         onClose={() => setReportModalVisible(false)}
         target={reportTarget}
       />
+
+      {/* 🔔 내 글에 댓글이 달려있고 푸시 미등록이면 prompt */}
+      {showCommentPushPrompt && user && (
+        <PushNotificationPrompt
+          userId={user.uid}
+          trigger="comment"
+          onComplete={() => setShowCommentPushPrompt(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }

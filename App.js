@@ -199,18 +199,11 @@ function AppNavigator() {
     initializeAds();
   }, []);
 
-  // 🔔 푸시 알림 프롬프트 표시 (로그인 후 약간의 딜레이)
+  // 🔔 방문 횟수만 업데이트. 로그인 직후 자동 푸시 prompt는 제거
+  // (가치 경험 0인 상태에서 prompt 띄우면 iOS denied 영구박힘 → 글쓰기/댓글 trigger로만 유도)
   useEffect(() => {
     if (user) {
-      // 방문 횟수 업데이트
       updateUserVisitCount(user.uid);
-      
-      // 앱이 완전히 로드된 후 푸시 프롬프트 표시 (5초 딜레이 - 앱 탐색 시간 확보)
-      const timer = setTimeout(() => {
-        setShowPushPrompt(true);
-      }, 5000);
-      
-      return () => clearTimeout(timer);
     } else {
       setShowPushPrompt(false);
     }

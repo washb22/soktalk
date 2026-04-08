@@ -52,8 +52,8 @@ export default function PushNotificationPrompt({ userId, onComplete, trigger = '
         return;
       }
 
-      // 글 작성 후 트리거인 경우: 별도 체크
-      if (trigger === 'post') {
+      // 글 작성 후 / 댓글 받음 트리거: 별도 체크
+      if (trigger === 'post' || trigger === 'comment') {
         const postPromptShown = await AsyncStorage.getItem(POST_PROMPT_STORAGE_KEY);
         if (!postPromptShown) {
           setShowPrePermission(true);
@@ -98,8 +98,12 @@ export default function PushNotificationPrompt({ userId, onComplete, trigger = '
   // 사전 설명 후 실제 권한 요청
   const handleAcceptPrePermission = async () => {
     setShowPrePermission(false);
-    await AsyncStorage.setItem(PROMPT_STORAGE_KEY, 'true');
-    await AsyncStorage.setItem(POST_PROMPT_STORAGE_KEY, 'true');
+    // ✅ 트리거별로 분리 — 로그인 prompt가 글쓰기 trigger를 죽이지 않도록
+    if (trigger === 'post' || trigger === 'comment') {
+      await AsyncStorage.setItem(POST_PROMPT_STORAGE_KEY, 'true');
+    } else {
+      await AsyncStorage.setItem(PROMPT_STORAGE_KEY, 'true');
+    }
 
     try {
       const { status } = await Notifications.requestPermissionsAsync();
@@ -129,9 +133,11 @@ export default function PushNotificationPrompt({ userId, onComplete, trigger = '
   // 사전 설명에서 나중에 선택
   const handleDeclinePrePermission = async () => {
     setShowPrePermission(false);
-    await AsyncStorage.setItem(PROMPT_STORAGE_KEY, 'true');
-    if (trigger === 'post') {
+    // ✅ 트리거별로 분리 (로그인 거절이 글쓰기/댓글 trigger를 죽이지 않게)
+    if (trigger === 'post' || trigger === 'comment') {
       await AsyncStorage.setItem(POST_PROMPT_STORAGE_KEY, 'true');
+    } else {
+      await AsyncStorage.setItem(PROMPT_STORAGE_KEY, 'true');
     }
     await AsyncStorage.setItem(REMINDER_STORAGE_KEY, Date.now().toString());
     onComplete && onComplete();
@@ -172,14 +178,24 @@ export default function PushNotificationPrompt({ userId, onComplete, trigger = '
           
           {/* 제목 */}
           <Text style={styles.title}>
-            {trigger === 'post' ? '글 등록 완료!' : '알림을 켜시겠어요?'}
+            {trigger === 'comment'
+              ? '내 글에 댓글이 달렸어요 💬'
+              : trigger === 'post'
+              ? '글 등록 완료!'
+              : '알림을 켜시겠어요?'}
           </Text>
 
           {/* 설명 */}
-          {trigger === 'post' ? (
+          {trigger === 'comment' ? (
             <View style={styles.benefitList}>
               <Text style={styles.postPromptDescription}>
-                내 글에 댓글이 달리면{'\n'}알림으로 바로 확인할 수 있어요!
+                알림을 켜두지 않으면{'\n'}앞으로 달리는 댓글을 놓치게 돼요.{'\n\n'}지금 켜두면 바로 확인할 수 있어요.
+              </Text>
+            </View>
+          ) : trigger === 'post' ? (
+            <View style={styles.benefitList}>
+              <Text style={styles.postPromptDescription}>
+                지금 알림을 켜두면{'\n'}댓글이 달리는 즉시 알려드려요.{'\n\n'}나중에 켜면 그 사이 댓글은 놓쳐요.
               </Text>
             </View>
           ) : (
