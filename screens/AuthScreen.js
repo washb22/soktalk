@@ -62,36 +62,41 @@ export default function AuthScreen({ navigation }) {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
       
-      if (!userDoc.exists()) {
-        // 신규 사용자인 경우 기본 정보 저장
+      // 신규 또는 깡통 문서(App.js의 updateUserVisitCount가 먼저 만든 것) 보정
+      const existingData = userDoc.exists() ? userDoc.data() : null;
+      const isNewOrIncomplete = !userDoc.exists() || !existingData.provider;
+
+      if (isNewOrIncomplete) {
         await setDoc(userDocRef, {
           email: user.email,
           displayName: user.displayName || user.email.split('@')[0],
           nickname: user.displayName || user.email.split('@')[0],
           profileImage: user.photoURL,
           provider: 'google',
-          createdAt: serverTimestamp(),
+          createdAt: existingData?.createdAt || serverTimestamp(),
           gender: '',
           birthYear: 0,
           introduction: '',
           currentSituation: '',
-          visitCount: 1,
-        });
-        
-        console.log('신규 구글 사용자 등록 완료');
-        
-        Alert.alert(
-          '환영합니다!',
-          '구글 계정으로 가입되었습니다.',
-          [{ text: '확인' }]
-        );
+          visitCount: existingData?.visitCount || 1,
+        }, { merge: true });
+
+        console.log('신규/보정 구글 사용자 등록 완료');
+
+        if (!userDoc.exists()) {
+          Alert.alert(
+            '환영합니다!',
+            '구글 계정으로 가입되었습니다.',
+            [{ text: '확인' }]
+          );
+        }
       } else {
         // 기존 사용자 방문 횟수 증가
         await setDoc(userDocRef, {
-          visitCount: (userDoc.data().visitCount || 0) + 1,
+          visitCount: (existingData.visitCount || 0) + 1,
           lastVisit: serverTimestamp(),
         }, { merge: true });
-        
+
         console.log('기존 사용자 로그인 완료');
       }
     } catch (error) {
@@ -148,46 +153,51 @@ export default function AuthScreen({ navigation }) {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
       
-      if (!userDoc.exists()) {
+      // 신규 또는 깡통 문서 보정
+      const existingData = userDoc.exists() ? userDoc.data() : null;
+      const isNewOrIncomplete = !userDoc.exists() || !existingData.provider;
+
+      if (isNewOrIncomplete) {
         // Apple은 이름을 첫 로그인 때만 제공
         const fullName = credential.fullName;
         let displayName = '사용자';
-        
+
         if (fullName) {
           const givenName = fullName.givenName || '';
           const familyName = fullName.familyName || '';
           displayName = `${familyName}${givenName}`.trim() || '사용자';
         }
-        
-        // 신규 사용자인 경우 기본 정보 저장
+
         await setDoc(userDocRef, {
           email: credential.email || user.email || '',
           displayName: displayName,
           nickname: displayName,
           profileImage: null,
           provider: 'apple',
-          createdAt: serverTimestamp(),
+          createdAt: existingData?.createdAt || serverTimestamp(),
           gender: '',
           birthYear: 0,
           introduction: '',
           currentSituation: '',
-          visitCount: 1,
-        });
-        
-        console.log('신규 Apple 사용자 등록 완료');
-        
-        Alert.alert(
-          '환영합니다!',
-          'Apple 계정으로 가입되었습니다.',
-          [{ text: '확인' }]
-        );
+          visitCount: existingData?.visitCount || 1,
+        }, { merge: true });
+
+        console.log('신규/보정 Apple 사용자 등록 완료');
+
+        if (!userDoc.exists()) {
+          Alert.alert(
+            '환영합니다!',
+            'Apple 계정으로 가입되었습니다.',
+            [{ text: '확인' }]
+          );
+        }
       } else {
         // 기존 사용자 방문 횟수 증가
         await setDoc(userDocRef, {
-          visitCount: (userDoc.data().visitCount || 0) + 1,
+          visitCount: (existingData.visitCount || 0) + 1,
           lastVisit: serverTimestamp(),
         }, { merge: true });
-        
+
         console.log('기존 Apple 사용자 로그인 완료');
       }
     } catch (error) {

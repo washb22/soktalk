@@ -11,7 +11,7 @@ import * as Notifications from 'expo-notifications';
 // AuthProvider 임포트
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { db } from './firebase';
-import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 
 // 푸시 알림 서비스
 import { setupNotificationListener } from './services/notificationService';
@@ -262,14 +262,22 @@ function AppNavigator() {
       const userDocSnap = await getDoc(userDocRef);
 
       if (userDocSnap.exists()) {
-        await updateDoc(userDocRef, {
+        const data = userDocSnap.data();
+        const updates = {
           visitCount: increment(1),
-          lastVisit: new Date(),
-        });
+          lastVisit: serverTimestamp(),
+        };
+        // 깡통 문서(createdAt 누락) 자동 보정
+        if (!data.createdAt) {
+          updates.createdAt = serverTimestamp();
+        }
+        await updateDoc(userDocRef, updates);
       } else {
+        // 신규 문서: createdAt 반드시 박기 (어드민 회원관리 정렬 의존)
         await setDoc(userDocRef, {
           visitCount: 1,
-          lastVisit: new Date(),
+          lastVisit: serverTimestamp(),
+          createdAt: serverTimestamp(),
         });
       }
     } catch (error) {
