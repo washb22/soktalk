@@ -1,6 +1,6 @@
 // components/EventPopup.js
 // 어드민 공지(notices) 중 showAsPopup=true 인 항목을 앱 실행 시 "세로 포스터형" 팝업으로 표시.
-// 내용·이미지·노출 여부 모두 Firestore에서 읽으므로, 새 이벤트는 앱 업데이트 없이 어드민에서 제어 가능.
+// 최대 2개까지 순차로 노출(하나 닫으면 다음이 뜸). 내용·이미지·노출 여부 모두 Firestore에서 제어.
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -17,13 +17,15 @@ import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
 const DISMISS_KEY_PREFIX = 'event_popup_dismissed_'; // + noticeId → 'YYYY-M-D' (그날 하루 숨김)
+const MAX_POPUPS = 2; // 앱 실행 시 최대 노출 개수
 
 export default function EventPopup({ navigationRef }) {
-  const [popup, setPopup] = useState(null);
+  const [queue, setQueue] = useState([]); // 노출할 공지들(최신순, 최대 MAX_POPUPS)
+  const [index, setIndex] = useState(0); // 현재 보여주는 순번
   const [dontShowToday, setDontShowToday] = useState(false);
 
   useEffect(() => {
-    loadPopup();
+    loadPopups();
   }, []);
 
   const todayStr = () => {
@@ -31,7 +33,7 @@ export default function EventPopup({ navigationRef }) {
     return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
   };
 
-  const loadPopup = async () => {
+  const loadPopups = async () => {
     try {
       // 단일 equality 쿼리 → 별도 복합 인덱스 불필요
       const q = query(collection(db, 'notices'), where('showAsPopup', '==', true));
@@ -48,45 +50,64 @@ export default function EventPopup({ navigationRef }) {
           return tb - ta;
         });
 
-      // '오늘 하루 보지 않기'로 숨기지 않은 첫 항목을 노출
+      // '오늘 하루 보지 않기'로 숨기지 않은 것만, 최대 MAX_POPUPS개
       const today = todayStr();
+      const fresh = [];
       for (const notice of candidates) {
         const dismissed = await AsyncStorage.getItem(DISMISS_KEY_PREFIX + notice.id);
         if (dismissed !== today) {
-          setPopup(notice);
-          return;
+          fresh.push(notice);
+          if (fresh.length >= MAX_POPUPS) break;
         }
       }
+      if (fresh.length > 0) setQueue(fresh);
     } catch (error) {
       console.log('이벤트 팝업 로드 에러:', error);
     }
   };
 
-  const handleClose = async () => {
-    if (popup && dontShowToday) {
-      await AsyncStorage.setItem(DISMISS_KEY_PREFIX + popup.id, todayStr());
+  // 현재 팝업 닫고 다음으로 (없으면 종료)
+  const advance = async () => {
+    const cur = queue[index];
+    if (cur && dontShowToday) {
+      await AsyncStorage.setItem(DISMISS_KEY_PREFIX + cur.id, todayStr());
     }
-    setPopup(null);
+    setDontShowToday(false);
+    setIndex((i) => i + 1);
   };
 
   const handleDetail = async () => {
-    const target = popup;
-    await handleClose();
-    if (target && navigationRef?.current) {
-      navigationRef.current.navigate('NoticeDetail', { notice: target });
+    const cur = queue[index];
+    if (cur && dontShowToday) {
+      await AsyncStorage.setItem(DISMISS_KEY_PREFIX + cur.id, todayStr());
+    }
+    setIndex(queue.length); // 팝업 흐름 종료
+    if (cur && navigationRef?.current) {
+      navigationRef.current.navigate('NoticeDetail', { notice: cur });
     }
   };
 
+  const popup = queue[index];
   if (!popup) return null;
 
   const hasImage = !!popup.imageUrl;
+  const remaining = queue.length - index; // 남은 개수(현재 포함)
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={handleClose}>
+    <Modal key={popup.id} visible transparent animationType="fade" onRequestClose={advance}>
       <View style={styles.overlay}>
         <View style={styles.card}>
+          {/* 여러 개일 때 진행 표시 (예: 1/2) */}
+          {queue.length > 1 && (
+            <View style={styles.counter}>
+              <Text style={styles.counterText}>
+                {index + 1}/{queue.length}
+              </Text>
+            </View>
+          )}
+
           {/* 닫기 X (이미지 위에 떠있음) */}
-          <TouchableOpacity style={styles.closeIcon} onPress={handleClose}>
+          <TouchableOpacity style={styles.closeIcon} onPress={advance}>
             <Ionicons name="close" size={22} color="#fff" />
           </TouchableOpacity>
 
@@ -114,7 +135,7 @@ export default function EventPopup({ navigationRef }) {
             </View>
           )}
 
-          {/* 하단 바: 오늘 하루 보지 않기 / 닫기 */}
+          {/* 하단 바: 오늘 하루 보지 않기 / 다음·닫기 */}
           <View style={styles.bottomBar}>
             <TouchableOpacity
               style={styles.checkRow}
@@ -128,8 +149,8 @@ export default function EventPopup({ navigationRef }) {
               <Text style={styles.checkText}>오늘 하루 보지 않기</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={handleClose}>
-              <Text style={styles.closeText}>닫기</Text>
+            <TouchableOpacity onPress={advance}>
+              <Text style={styles.closeText}>{remaining > 1 ? '다음' : '닫기'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -153,6 +174,21 @@ const styles = StyleSheet.create({
     maxWidth: 330,
     maxHeight: '88%',
     overflow: 'hidden',
+  },
+  counter: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    zIndex: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  counterText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   closeIcon: {
     position: 'absolute',
@@ -220,8 +256,8 @@ const styles = StyleSheet.create({
   },
   closeText: {
     fontSize: 14,
-    color: '#999',
-    fontWeight: '500',
+    color: '#FF6B6B',
+    fontWeight: '600',
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
