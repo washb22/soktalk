@@ -1,5 +1,5 @@
 // components/EventPopup.js
-// 어드민 공지(notices) 중 showAsPopup=true 인 항목을 앱 실행 시 팝업으로 표시.
+// 어드민 공지(notices) 중 showAsPopup=true 인 항목을 앱 실행 시 "세로 포스터형" 팝업으로 표시.
 // 내용·이미지·노출 여부 모두 Firestore에서 읽으므로, 새 이벤트는 앱 업데이트 없이 어드민에서 제어 가능.
 import React, { useState, useEffect } from 'react';
 import {
@@ -79,38 +79,43 @@ export default function EventPopup({ navigationRef }) {
 
   if (!popup) return null;
 
+  const hasImage = !!popup.imageUrl;
+
   return (
     <Modal visible transparent animationType="fade" onRequestClose={handleClose}>
       <View style={styles.overlay}>
         <View style={styles.card}>
-          {/* 닫기 X */}
+          {/* 닫기 X (이미지 위에 떠있음) */}
           <TouchableOpacity style={styles.closeIcon} onPress={handleClose}>
-            <Ionicons name="close" size={24} color="#999" />
+            <Ionicons name="close" size={22} color="#fff" />
           </TouchableOpacity>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {!!popup.imageUrl && (
+          {hasImage ? (
+            // 포스터형: 세로 이미지가 팝업 전체. 탭하면 자세히 보기
+            <TouchableOpacity activeOpacity={0.9} onPress={handleDetail}>
               <Image
                 source={{ uri: popup.imageUrl }}
-                style={styles.image}
+                style={styles.posterImage}
                 resizeMode="cover"
               />
-            )}
+            </TouchableOpacity>
+          ) : (
+            // 이미지 없으면 텍스트 카드로 대체
+            <View style={styles.textBlock}>
+              <Text style={styles.title}>{popup.title}</Text>
+              {!!popup.content && (
+                <ScrollView style={styles.contentScroll}>
+                  <Text style={styles.content}>{popup.content}</Text>
+                </ScrollView>
+              )}
+              <TouchableOpacity style={styles.primaryButton} onPress={handleDetail}>
+                <Text style={styles.primaryButtonText}>자세히 보기</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
-            <Text style={styles.title}>{popup.title}</Text>
-
-            {!!popup.content && (
-              <Text style={styles.content}>{popup.content}</Text>
-            )}
-          </ScrollView>
-
-          {/* 자세히 보기 */}
-          <TouchableOpacity style={styles.primaryButton} onPress={handleDetail}>
-            <Text style={styles.primaryButtonText}>자세히 보기</Text>
-          </TouchableOpacity>
-
-          {/* 오늘 하루 보지 않기 / 닫기 */}
-          <View style={styles.bottomRow}>
+          {/* 하단 바: 오늘 하루 보지 않기 / 닫기 */}
+          <View style={styles.bottomBar}>
             <TouchableOpacity
               style={styles.checkRow}
               onPress={() => setDontShowToday((v) => !v)}
@@ -144,24 +149,29 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#fff',
     borderRadius: 20,
-    padding: 24,
     width: '100%',
-    maxWidth: 360,
-    maxHeight: '80%',
+    maxWidth: 330,
+    maxHeight: '88%',
+    overflow: 'hidden',
   },
   closeIcon: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    zIndex: 1,
-    padding: 4,
+    top: 10,
+    right: 10,
+    zIndex: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderRadius: 16,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  image: {
+  posterImage: {
     width: '100%',
-    height: 180,
-    borderRadius: 12,
-    marginBottom: 16,
-    marginTop: 8,
+    aspectRatio: 3 / 4, // 세로 포스터 비율 (예: 1080x1440)
+  },
+  textBlock: {
+    padding: 24,
   },
   title: {
     fontSize: 20,
@@ -170,30 +180,34 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
+  contentScroll: {
+    maxHeight: 220,
+    marginBottom: 12,
+  },
   content: {
     fontSize: 15,
     color: '#555',
     lineHeight: 23,
-    marginBottom: 8,
   },
   primaryButton: {
     backgroundColor: '#FF6B6B',
     paddingVertical: 15,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 4,
   },
   primaryButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
   },
-  bottomRow: {
+  bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 14,
-    paddingHorizontal: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
   },
   checkRow: {
     flexDirection: 'row',
