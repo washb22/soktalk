@@ -190,6 +190,28 @@ export default function EditPostScreen({ route, navigation }) {
                                 잡담
                             </Text>
                         </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.categoryButton,
+                                category === '뷰티' && styles.categoryButtonActive,
+                            ]}
+                            onPress={() => setCategory('뷰티')}
+                        >
+                            <Ionicons
+                                name="rose"
+                                size={18}
+                                color={category === '뷰티' ? '#fff' : '#FF6B6B'}
+                            />
+                            <Text
+                                style={[
+                                    styles.categoryButtonText,
+                                    category === '뷰티' && styles.categoryButtonTextActive,
+                                ]}
+                            >
+                                뷰티
+                            </Text>
+                        </TouchableOpacity>
                     </View>
 
                     {/* 이미지 선택 버튼 */}
@@ -305,6 +327,7 @@ const styles = StyleSheet.create({
     },
     categoryContainer: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         marginBottom: 20,
         gap: 12,
     },

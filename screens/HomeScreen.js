@@ -272,6 +272,7 @@ export default function HomeScreen({ navigation, route, category }) {
   const getHeaderTitle = () => {
     if (category === '연애상담') return '연애상담';
     if (category === '잡담') return '잡담';
+    if (category === '뷰티') return '뷰티';
     return '인기글';
   };
 

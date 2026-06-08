@@ -52,14 +52,16 @@ export default function PushNotificationPrompt({ userId, onComplete, trigger = '
         return;
       }
 
-      // 글 작성 후 / 댓글 받음 트리거: 별도 체크
+      // 글 작성 후 / 댓글 받음 트리거: 허용 전까지 글 쓸 때마다 재유도
+      // (여기 도달 = 권한이 granted가 아님 → denied 또는 undetermined)
       if (trigger === 'post' || trigger === 'comment') {
-        const postPromptShown = await AsyncStorage.getItem(POST_PROMPT_STORAGE_KEY);
-        if (!postPromptShown) {
+        if (status === 'denied') {
+          // 이미 거부한 사용자: OS 다이얼로그가 안 뜨므로 설정으로 유도
+          setShowReminder(true);
+        } else {
+          // 아직 결정 안 함: 사전 설명 후 OS 권한 요청
           setShowPrePermission(true);
-          return;
         }
-        onComplete && onComplete();
         return;
       }
 
@@ -147,18 +149,22 @@ export default function PushNotificationPrompt({ userId, onComplete, trigger = '
   const handleGoToSettings = async () => {
     setShowReminder(false);
     await AsyncStorage.setItem(REMINDER_STORAGE_KEY, Date.now().toString());
-    
+
     if (Platform.OS === 'ios') {
       Linking.openURL('app-settings:');
     } else {
       Linking.openSettings();
     }
+    // 글작성/댓글 트리거에서 화면 이동이 막히지 않도록
+    onComplete && onComplete();
   };
 
   // 리마인더에서 나중에 선택
   const handleDeclineReminder = async () => {
     setShowReminder(false);
     await AsyncStorage.setItem(REMINDER_STORAGE_KEY, Date.now().toString());
+    // 글작성/댓글 트리거에서 화면 이동이 막히지 않도록
+    onComplete && onComplete();
   };
 
   // 사전 설명 팝업 (첫 번째)

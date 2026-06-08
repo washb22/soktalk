@@ -33,7 +33,7 @@ import {
   serverTimestamp,
   increment,
 } from 'firebase/firestore';
-import { sendCommentNotification, sendLikeNotification } from '../services/notificationService';
+import { sendCommentNotification, sendReplyNotification, sendLikeNotification } from '../services/notificationService';
 import ReportModal from '../components/ReportModal';
 import PushNotificationPrompt from '../components/PushNotificationPrompt';
 
@@ -308,7 +308,17 @@ export default function PostDetailScreen({ route, navigation }) {
       };
       
       await addDoc(commentsRef, newReply);
-      
+
+      // 답글 알림 전송 (원댓글 작성자에게, 본인 제외)
+      if (replyingTo.userId && replyingTo.userId !== user.uid) {
+        await sendReplyNotification(
+          replyingTo.userId,                                       // 1. 원댓글 작성자 ID
+          isAnonymousReply ? '익명' : (user.displayName || '익명'), // 2. 답글 작성자 이름
+          postData.title,                                          // 3. 게시글 제목
+          postId                                                    // 4. 게시글 ID
+        );
+      }
+
       setReplyText('');
       setReplyingTo(null);
       setIsAnonymousReply(false);

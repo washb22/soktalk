@@ -55,6 +55,39 @@ export async function registerForPushNotificationsAsync() {
   return token;
 }
 
+// 앱 시작 시 호출: 권한이 "이미 허용된" 경우에만 토큰을 조용히 저장/갱신
+// (권한 요청 다이얼로그를 띄우지 않음 → iOS 영구거부 위험 없음)
+export async function syncPushTokenIfGranted(userId) {
+  if (!userId) return;
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') {
+      // 아직 허용 안 함 → 글쓰기/댓글 trigger 모달에서 유도하므로 여기선 아무것도 안 함
+      return;
+    }
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF6B6B',
+      });
+    }
+
+    const token = (await Notifications.getExpoPushTokenAsync({
+      projectId: 'b0255ada-c852-4ab5-b44c-5d5ba275781d',
+    })).data;
+
+    if (token) {
+      await savePushToken(userId, token);
+      console.log('🔄 앱 시작 시 푸시 토큰 동기화 완료');
+    }
+  } catch (error) {
+    console.error('푸시 토큰 동기화 에러:', error);
+  }
+}
+
 // Firestore에 FCM 토큰 저장
 export async function savePushToken(userId, token) {
   if (!token) return;
@@ -103,7 +136,7 @@ export async function sendCommentNotification(postAuthorId, commenterName, postT
       },
     };
 
-    await fetch('https://exp.host/--/api/v2/push/send', {
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -113,9 +146,85 @@ export async function sendCommentNotification(postAuthorId, commenterName, postT
       body: JSON.stringify(message),
     });
 
-    console.log('✅ 댓글 알림 전송 완료');
+    const result = await response.json();
+    console.log('📨 댓글 알림 응답:', JSON.stringify(result));
+    await handlePushReceipt(result, postAuthorId);
   } catch (error) {
     console.error('❌ 댓글 알림 전송 에러:', error);
+  }
+}
+
+// Expo 푸시 응답 처리: 에러 로깅 + 만료 토큰 정리
+async function handlePushReceipt(result, userId) {
+  const ticket = result && result.data;
+  if (!ticket) {
+    console.warn('⚠️ 푸시 응답에 data 없음:', JSON.stringify(result));
+    return;
+  }
+
+  if (ticket.status === 'ok') {
+    console.log('✅ 알림 전송 완료');
+    return;
+  }
+
+  // 전송 실패
+  console.error('❌ 알림 전송 실패:', ticket.message, ticket.details);
+
+  // 토큰이 더 이상 유효하지 않으면 Firestore에서 제거 → 다음 로그인 때 재발급
+  if (ticket.details && ticket.details.error === 'DeviceNotRegistered') {
+    try {
+      await updateDoc(doc(db, 'users', userId), { pushToken: null });
+      console.log('🧹 만료된 푸시 토큰 제거 완료');
+    } catch (e) {
+      console.error('토큰 제거 실패:', e);
+    }
+  }
+}
+
+// 답글 알림 전송 (원댓글 작성자에게)
+export async function sendReplyNotification(commentAuthorId, replierName, postTitle, postId) {
+  try {
+    const userRef = doc(db, 'users', commentAuthorId);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+      console.log('사용자를 찾을 수 없습니다.');
+      return;
+    }
+
+    const pushToken = userSnap.data().pushToken;
+    if (!pushToken) {
+      console.log('푸시 토큰이 없습니다.');
+      return;
+    }
+
+    const message = {
+      to: pushToken,
+      sound: 'default',
+      title: '새 답글 💬',
+      body: `${replierName}님이 내 댓글에 답글을 남겼습니다.`,
+      data: {
+        type: 'reply',
+        postId: postId,
+        screen: 'PostDetail',
+      },
+    };
+
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(message),
+    });
+
+    const result = await response.json();
+    console.log('📨 답글 알림 응답:', JSON.stringify(result));
+    await handlePushReceipt(result, commentAuthorId);
+  } catch (error) {
+    console.error('❌ 답글 알림 전송 에러:', error);
   }
 }
 
@@ -151,7 +260,7 @@ export async function sendLikeNotification(postAuthorId, likerName, postTitle, p
       },
     };
 
-    await fetch('https://exp.host/--/api/v2/push/send', {
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -161,7 +270,9 @@ export async function sendLikeNotification(postAuthorId, likerName, postTitle, p
       body: JSON.stringify(message),
     });
 
-    console.log('✅ 좋아요 알림 전송 완료');
+    const result = await response.json();
+    console.log('📨 좋아요 알림 응답:', JSON.stringify(result));
+    await handlePushReceipt(result, postAuthorId);
   } catch (error) {
     console.error('❌ 좋아요 알림 전송 에러:', error);
   }

@@ -14,13 +14,16 @@ import { db } from './firebase';
 import { doc, getDoc, setDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 
 // 푸시 알림 서비스
-import { setupNotificationListener } from './services/notificationService';
+import { setupNotificationListener, syncPushTokenIfGranted } from './services/notificationService';
 
 // 푸시 알림 유도 팝업
 import PushNotificationPrompt from './components/PushNotificationPrompt';
 
 // 강제 업데이트 체크
 import ForceUpdateCheck from './components/ForceUpdateCheck';
+
+// 이벤트 팝업 (어드민 공지 연동)
+import EventPopup from './components/EventPopup';
 
 // 🎯 광고 초기화
 import { initializeAds } from './services/adsConfig';
@@ -49,6 +52,10 @@ function ChatScreen({ navigation }) {
   return <HomeScreen navigation={navigation} category="잡담" />;
 }
 
+function BeautyScreen({ navigation }) {
+  return <HomeScreen navigation={navigation} category="뷰티" />;
+}
+
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
@@ -65,6 +72,8 @@ function MainTabs() {
             iconName = focused ? 'heart' : 'heart-outline';
           } else if (route.name === '잡담') {
             iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+          } else if (route.name === '뷰티') {
+            iconName = focused ? 'rose' : 'rose-outline';
           } else if (route.name === '궁합') {
             iconName = focused ? 'sparkles' : 'sparkles-outline';
           } else if (route.name === 'MY') {
@@ -89,6 +98,7 @@ function MainTabs() {
       <Tab.Screen name="인기글" component={HomeScreen} />
       <Tab.Screen name="연애상담" component={BoardScreen} />
       <Tab.Screen name="잡담" component={ChatScreen} />
+      <Tab.Screen name="뷰티" component={BeautyScreen} />
       <Tab.Screen name="궁합" component={CompatibilityScreen} />
       <Tab.Screen name="MY" component={ProfileScreen} />
     </Tab.Navigator>
@@ -204,6 +214,9 @@ function AppNavigator() {
   useEffect(() => {
     if (user) {
       updateUserVisitCount(user.uid);
+      // 🔔 권한이 이미 허용된 사용자는 앱 켤 때마다 토큰 저장/갱신 (OS 권한창은 안 뜸)
+      // → 글쓴이에게 토큰이 없어 댓글 알림이 안 가던 문제 해결 + 만료 토큰 갱신
+      syncPushTokenIfGranted(user.uid);
     } else {
       setShowPushPrompt(false);
     }
@@ -296,11 +309,13 @@ function AppNavigator() {
           <MainStack />
           {/* 🔔 푸시 알림 유도 팝업 */}
           {showPushPrompt && (
-            <PushNotificationPrompt 
+            <PushNotificationPrompt
               userId={user.uid}
               onComplete={() => setShowPushPrompt(false)}
             />
           )}
+          {/* 🎉 이벤트 팝업 (어드민 공지 showAsPopup 연동) */}
+          <EventPopup navigationRef={navigationRef} />
         </>
       ) : (
         <AuthStack />
