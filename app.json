@@ -25,7 +25,10 @@
         "NSUserTrackingUsageDescription": "맞춤형 광고를 제공하기 위해 사용자 활동을 추적합니다.",
         "NSPhotoLibraryUsageDescription": "게시글에 사진을 첨부하기 위해 사진 라이브러리 접근 권한이 필요합니다.",
         "NSCameraUsageDescription": "게시글에 사진을 첨부하기 위해 카메라 접근 권한이 필요합니다.",
-        "CFBundleLocalizations": ["ko"],
+        "CFBundleLocalizations": [
+          "ko",
+          "ko"
+        ],
         "CFBundleDevelopmentRegion": "ko"
       }
     },
@@ -35,7 +38,13 @@
         "backgroundColor": "#FFCDD2"
       },
       "package": "com.wkrgud.soktalk",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "com.google.android.gms.permission.AD_ID",
+        "android.permission.RECORD_AUDIO",
+        "com.google.android.gms.permission.AD_ID",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -120,6 +129,12 @@
       "eas": {
         "projectId": "b0255ada-c852-4ab5-b44c-5d5ba275781d"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/b0255ada-c852-4ab5-b44c-5d5ba275781d"
     }
   }
 }

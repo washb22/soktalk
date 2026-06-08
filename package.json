@@ -33,6 +33,7 @@
     "expo-splash-screen": "~0.30.10",
     "expo-status-bar": "~2.2.3",
     "expo-tracking-transparency": "~5.2.4",
+    "expo-updates": "~0.28.18",
     "expo-web-browser": "~14.2.0",
     "firebase": "^12.3.0",
     "openai": "^5.23.2",
